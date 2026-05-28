@@ -173,7 +173,8 @@
     </div>
     <div class="form-group">
       <label>Key Name</label>
-      <input id="new-key-name" type="text" placeholder="e.g. Personal, Work" maxlength="80">
+      <input id="new-key-name" type="text" placeholder="e.g. D:My Phone, O:Alice" maxlength="80">
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Prefix <strong>D:</strong> for a device key, <strong>O:</strong> for an owner key.</div>
     </div>
     <button onclick="app.createKey()">Generate Keypair</button>
   </section>
@@ -417,7 +418,7 @@
 'use strict';
 
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v41';
+const APP_VERSION = 'ssd-v42';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 
@@ -1342,6 +1343,9 @@ const app = {
     div.className = 'key-card';
     const seed = await cryptoOps.identiconSeed(rec.public_key_b64);
     const imgSrc = identicon.renderToDataURL(seed, 64);
+    let displayName = rec.name, roleTag = '';
+    if (rec.name.startsWith('D:')) { displayName = rec.name.slice(2); roleTag = '<span class="badge" style="margin-right:4px">Device</span>'; }
+    else if (rec.name.startsWith('O:')) { displayName = rec.name.slice(2); roleTag = '<span class="badge badge-primary" style="margin-right:4px">Owner</span>'; }
     const badges = [
       rec.is_default ? '<span class="badge badge-primary">Default</span>' : '',
       rec.is_revoked ? '<span class="badge badge-danger">Revoked</span>' : '',
@@ -1350,7 +1354,7 @@ const app = {
       <div class="key-card-header">
         <img src="${imgSrc}" width="48" height="48" class="identicon" alt="">
         <div class="key-card-meta">
-          <div class="key-name">${rec.name}${badges}</div>
+          <div class="key-name">${roleTag}${displayName}${badges}</div>
           <div class="key-fp">${rec.fingerprint}</div>
         </div>
       </div>
@@ -1905,11 +1909,41 @@ const app = {
     if (nameInput && nameSetting) nameInput.value = nameSetting.value;
   },
 
+  async generateDeviceKey(name) {
+    ui.clear();
+    ui.display('Generating keypair…');
+    try {
+      const rec = await keyring.createKey(name);
+      await this.loadKeyring();
+      ui.display(`<div class="ok">✓ Key <strong>${rec.name}</strong> created. Find it in Me → Keys.</div>`);
+    } catch(e) {
+      ui.display(`<span class="fail">Failed: ${e.message}</span>`);
+    }
+  },
+
   async saveDeviceName() {
-    const val = document.getElementById('device-name-input').value.trim();
-    if (!val) { ui.display('<span class="warn">Enter a name for this device.</span>'); return; }
-    await db.put('settings', { key: 'my_device_name', value: val });
-    ui.display('<div class="ok">✓ Device name saved.</div>');
+    const newName = document.getElementById('device-name-input').value.trim();
+    if (!newName) { ui.display('<span class="warn">Enter a name for this device.</span>'); return; }
+    const oldSetting = await db.get('settings', 'my_device_name');
+    const oldName = oldSetting?.value || null;
+    await db.put('settings', { key: 'my_device_name', value: newName });
+
+    const allKeys  = await db.getAll('my_keys');
+    const newDKey  = `D:${newName}`;
+    if (allKeys.some(k => k.name === newDKey)) {
+      ui.display('<div class="ok">✓ Device name saved.</div>');
+      return;
+    }
+    const hadOldDKey = oldName && allKeys.some(k => k.name === `D:${oldName}`);
+    const note = hadOldDKey ? `<div style="font-size:13px;color:var(--text-muted);margin-bottom:10px">Your old key <strong>D:${oldName}</strong> is still in your keyring.</div>` : '';
+    ui.display(`<div class="ok">✓ Device name saved.</div>
+      <div style="margin-top:12px;padding:12px;border-radius:var(--radius);background:var(--surface-2)">
+        <div style="font-size:14px;margin-bottom:8px">Generate a signing key for this device?</div>
+        ${note}<div style="display:flex;gap:8px;align-items:center">
+          <button onclick="app.generateDeviceKey('${newDKey}')">Generate <strong>${newDKey}</strong></button>
+          <a href="#" class="cancel-link" onclick="ui.clear();return false">Not now</a>
+        </div>
+      </div>`);
   },
 
   async checkEncryptionKeyStatus() {
