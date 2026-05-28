@@ -441,7 +441,7 @@
 'use strict';
 
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v44';
+const APP_VERSION = 'ssd-v45';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 
@@ -1071,7 +1071,12 @@ const renderEngines = {
       return JSON.parse(fflate.strFromU8(files['source.json']));
     },
     hashTargets(content) { return { 'source.json': new TextEncoder().encode(this._src(content)) }; },
-    toElement()      { const d = document.createElement('div'); d.textContent = '[key transfer]'; return d; },
+    toElement(content) {
+      const pre = document.createElement('pre');
+      pre.className = 'render-preview';
+      pre.textContent = `Key Transfer\nKey: ${content.key_name}\n\nThis document transfers a signing key to this device.\nVerify the sender below before importing.`;
+      return pre;
+    },
   },
 };
 
@@ -1943,35 +1948,6 @@ const app = {
       const result   = await artifact.verify(unpacked);
       ui.clear();
 
-      // KEY TRANSFER — all security checks must pass before showing import UI
-      if (result.render_spec === 'ssd-key-transfer-1.0') {
-        const contactKeys  = await db.getAll('contact_keys');
-        const outerFp      = envelope?.signer_fingerprint;
-        const innerFp      = result.signer_fingerprint;
-        const signerContact = contactKeys.find(k => k.fingerprint === innerFp && !k.is_quarantined);
-        const reasons = [];
-        if (outerSigStatus?.ok !== true)    reasons.push('outer envelope signature missing or invalid');
-        if (!signerContact)                 reasons.push('signer is not a trusted contact on this device');
-        if (!result.signature_valid)        reasons.push('document signature invalid');
-        if (!result.content_unmodified)     reasons.push('content hash mismatch — file may be tampered');
-        if (outerFp !== innerFp)            reasons.push('envelope and document signers do not match');
-        if (reasons.length) {
-          ui.display(`<div class="fail" style="padding:12px;border-radius:var(--radius)"><strong>Key transfer rejected</strong><br><br>${reasons.join('<br>')}</div>`);
-          return;
-        }
-        this._pendingKeyImport = { ...unpacked.content };
-        const { key_name } = unpacked.content;
-        ui.display(`<div class="settings-block">
-          <h3>Key Transfer</h3>
-          <p style="margin-bottom:8px">From <strong>${signerContact.name}</strong> — all signatures verified.</p>
-          <p style="margin-bottom:16px">Import signing key <strong>${key_name}</strong>?</p>
-          <div style="display:flex;gap:8px">
-            <button onclick="app.importTransferredKey()">Import key</button>
-            <button class="btn-secondary" onclick="app._pendingKeyImport=null;ui.clear()">Reject</button>
-          </div></div>`);
-        return;
-      }
-
       if (wasEncrypted) {
         const rCount = envelope.recipients?.length ?? 0;
         let outerNote = `<div class="info" style="margin-bottom:8px">Encrypted to ${rCount} recipient${rCount !== 1 ? 's' : ''}.`;
@@ -1985,6 +1961,29 @@ const app = {
       ui.display('<strong>Rendered document:</strong>');
       document.getElementById('results').appendChild(unpacked.engine.toElement(unpacked.content));
       ui.displayVerification(result);
+
+      if (result.render_spec === 'ssd-key-transfer-1.0') {
+        const contactKeys   = await db.getAll('contact_keys');
+        const outerFp       = envelope?.signer_fingerprint;
+        const innerFp       = result.signer_fingerprint;
+        const signerContact = contactKeys.find(k => k.fingerprint === innerFp && !k.is_quarantined);
+        const reasons = [];
+        if (outerSigStatus?.ok !== true)   reasons.push('outer envelope signature missing or invalid');
+        if (!signerContact)                reasons.push('signer is not a trusted contact on this device');
+        if (!result.signature_valid)       reasons.push('document signature invalid');
+        if (!result.content_unmodified)    reasons.push('content hash mismatch');
+        if (outerFp !== innerFp)           reasons.push('envelope and document signers do not match');
+        const el = document.getElementById('results');
+        const action = document.createElement('div');
+        action.className = 'verify-result';
+        if (reasons.length) {
+          action.innerHTML = `<div class="fail"><strong>Import not available:</strong><br>${reasons.map(r => `✗ ${r}`).join('<br>')}</div>`;
+        } else {
+          this._pendingKeyImport = { ...unpacked.content };
+          action.innerHTML = `<div style="margin-top:4px"><button onclick="app.importTransferredKey()">Import key</button></div>`;
+        }
+        el.appendChild(action);
+      }
     } catch (e) {
       ui.clear();
       ui.display(`<span class="fail">Verification failed: ${e.name}: ${e.message}</span>`);
