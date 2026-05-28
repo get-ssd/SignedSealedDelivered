@@ -1921,6 +1921,14 @@ const app = {
     }
   },
 
+  async renameKey(keyId, newName) {
+    const rec = await db.get('my_keys', keyId);
+    if (!rec) return;
+    await db.put('my_keys', { ...rec, name: newName });
+    await this.loadKeyring();
+    ui.display(`<div class="ok">✓ Key renamed to <strong>${newName}</strong>. Same keypair — existing contacts and documents are unaffected.</div>`);
+  },
+
   async saveDeviceName() {
     const newName = document.getElementById('device-name-input').value.trim();
     if (!newName) { ui.display('<span class="warn">Enter a name for this device.</span>'); return; }
@@ -1928,22 +1936,34 @@ const app = {
     const oldName = oldSetting?.value || null;
     await db.put('settings', { key: 'my_device_name', value: newName });
 
-    const allKeys  = await db.getAll('my_keys');
-    const newDKey  = `D:${newName}`;
+    const allKeys = await db.getAll('my_keys');
+    const newDKey = `D:${newName}`;
     if (allKeys.some(k => k.name === newDKey)) {
       ui.display('<div class="ok">✓ Device name saved.</div>');
       return;
     }
-    const hadOldDKey = oldName && allKeys.some(k => k.name === `D:${oldName}`);
-    const note = hadOldDKey ? `<div style="font-size:13px;color:var(--text-muted);margin-bottom:10px">Your old key <strong>D:${oldName}</strong> is still in your keyring.</div>` : '';
-    ui.display(`<div class="ok">✓ Device name saved.</div>
-      <div style="margin-top:12px;padding:12px;border-radius:var(--radius);background:var(--surface-2)">
-        <div style="font-size:14px;margin-bottom:8px">Generate a signing key for this device?</div>
-        ${note}<div style="display:flex;gap:8px;align-items:center">
-          <button onclick="app.generateDeviceKey('${newDKey}')">Generate <strong>${newDKey}</strong></button>
-          <a href="#" class="cancel-link" onclick="ui.clear();return false">Not now</a>
-        </div>
-      </div>`);
+    const oldDKey = oldName ? allKeys.find(k => k.name === `D:${oldName}`) : null;
+    if (oldDKey) {
+      ui.display(`<div class="ok">✓ Device name saved.</div>
+        <div style="margin-top:12px;padding:12px;border-radius:var(--radius);background:var(--surface-2)">
+          <div style="font-size:14px;margin-bottom:8px">Rename your device key to match?</div>
+          <div style="font-size:13px;color:var(--text-muted);margin-bottom:10px">Same keypair — your contacts and existing documents are unaffected.</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button onclick="app.renameKey('${oldDKey.id}','${newDKey}')">Rename to <strong>${newDKey}</strong></button>
+            <button class="btn-secondary" onclick="app.generateDeviceKey('${newDKey}')">Fresh keypair instead</button>
+            <a href="#" class="cancel-link" onclick="ui.clear();return false">Not now</a>
+          </div>
+        </div>`);
+    } else {
+      ui.display(`<div class="ok">✓ Device name saved.</div>
+        <div style="margin-top:12px;padding:12px;border-radius:var(--radius);background:var(--surface-2)">
+          <div style="font-size:14px;margin-bottom:8px">Generate a signing key for this device?</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button onclick="app.generateDeviceKey('${newDKey}')">Generate <strong>${newDKey}</strong></button>
+            <a href="#" class="cancel-link" onclick="ui.clear();return false">Not now</a>
+          </div>
+        </div>`);
+    }
   },
 
   async checkEncryptionKeyStatus() {
