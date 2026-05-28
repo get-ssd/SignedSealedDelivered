@@ -2276,7 +2276,7 @@ const app = {
         const sealBadge = item.encrypted
           ? `<span class="badge badge-primary" style="margin-left:6px;cursor:pointer" onclick="app.showSealedRecipients('${item.id}')">Sealed ▾</span>`
           : '<span class="badge" style="margin-left:6px">Open</span>';
-        const sealAction = item.signed_by_key_id
+        const sealAction = item.signed_by_key_id && item.render_spec !== 'ssd-key-transfer-1.0'
           ? item.encrypted
             ? `<button class="btn-secondary" onclick="app.sealExistingArtifact('${item.id}')">Reseal</button>`
             : `<button class="btn-secondary" onclick="app.sealExistingArtifact('${item.id}')">Seal</button>`
