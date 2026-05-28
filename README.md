@@ -4,49 +4,79 @@ A cryptographic document signing and verification tool that runs entirely in the
 
 ## Current State
 
-v39 — core workflow complete, sync machinery removed in favour of the sealed-document transfer model.
+**v43** — owner key transfer complete. Full identity model in place: device keys, owner keys, contact pairing, and secure cross-device key transfer via sealed documents.
 
 ## How It Works
 
-### Identities and devices
+### Identity model
 
-Each browser instance is an independent identity. A user sets up each device separately — passkey registration, then a named signing keypair. There is no cross-device sync; instead, private material travels as sealed documents.
+Two levels of signing identity:
 
-**Recipient hierarchy when sealing a document:**
-1. **Self** — your own encryption key (keep a private copy)
-2. **Own devices** — other devices you own, added as contacts by scanning their key card QR
-3. **Contacts** — other people whose key cards you have imported
+- **Device key** (`D:` prefix) — auto-generated when you name a device. Tied to one browser instance. Contacts know you by this key.
+- **Owner key** (`O:` prefix) — a personal key representing you across all your devices. Created manually, then transferred to other devices via sealed document.
 
-### Key exchange
+Each browser instance manages its own keyring, protected by a passkey (WebAuthn PRF). Private keys never leave the device unencrypted.
 
-You share your public key card as a QR code or exported JSON. Anyone who scans it can verify your signatures and seal documents addressed to you. There is no trust authority — you decide whose keys to import.
+### Key naming convention
 
-### Cross-device key transfer
+| Format | Meaning | Example |
+|--------|---------|---------|
+| `D:name` | Device key — for this browser/device | `D:Alice's iPhone` |
+| `O:name` | Owner key — personal identity across devices | `O:Alice` |
+| (plain) | Legacy or manually named key | `Work` |
 
-To copy a signing key to another device:
-1. On the receiving device, go to Keyring → Show QR and add it as a contact on the sending device
-2. On the sending device, create a document containing the private key, seal it addressed to the receiving device, and deliver it
-3. On the receiving device, open the sealed document and import the key
+The keyring displays a **Device** or **Owner** badge based on the prefix.
 
-This uses the same sealed-document format as everything else. No special sync protocol.
+### Setup on a new device
 
-### Backup
+1. Register a passkey (Settings → Passkey)
+2. Name the device (Settings → Devices) — the app offers to generate `D:<name>` automatically
+3. Generate an encryption key (Settings → Encryption Key)
+4. Share your key card QR with contacts so they can send you sealed documents
 
-Seal a copy of your private key addressed to yourself. Store the `.sealed` file somewhere safe. To restore on a new device, set up a fresh instance, add the backed-up key card as a contact, then open the sealed backup.
+### Cross-device pairing
+
+Each device shows its key card as a QR code or exported JSON. Scan another device's key card to add it as a contact — you can then seal documents addressed to it, and it can seal documents addressed to you. No central authority.
+
+### Owner key transfer
+
+To use the same owner key on multiple devices:
+
+1. **Pair first** — both devices must have scanned each other's key card
+2. On the source device: Me → Keys → tap the `O:` key → **Transfer to device…** → pick the destination
+3. The app signs the transfer with your device key (`D:`), seals it for the destination's encryption key, and delivers a `.sealed` file
+4. On the destination device: open the file — the app verifies five security checks before showing the import prompt:
+   - Outer envelope signature valid
+   - Inner document signature valid
+   - Content hash intact
+   - Signer is a known, non-quarantined contact
+   - Outer and inner signers match
+5. All checks pass → **Import key** button appears, naming the sender
+
+A tampered or unsigned transfer is hard-rejected — no import UI is shown.
+
+### Sealed documents
+
+Documents can be encrypted to one or more recipients by their public encryption key. Tap the **Sealed ▾** badge on any document in the list to see who it was addressed to.
+
+Recipients can include yourself (to keep a readable copy), contacts, or other devices you own.
 
 ## Features
 
 - **Passkey registration** — WebAuthn with PRF extension for keyring encryption
-- **Ed25519 keypairs** — named signing identities, stored encrypted in IndexedDB
+- **Ed25519 keypairs** — named signing identities (`D:` / `O:` convention), stored encrypted in IndexedDB
 - **Key card** — self-signed JSON exportable as QR or file; verifiable without the app
+- **Device naming** — naming a device auto-offers a matching `D:` key; rename offers rename-or-fresh-keypair
 - **Drafts** — compose and save documents before signing
 - **Sign** — compose → canonical render → biometric confirmation → `.sealed` artifact
 - **Seal / Reseal** — encrypt artifacts to one or more recipients by public key
-- **Deliver** — send sealed artifacts from the Documents list
-- **Verify** — drag-and-drop `.sealed` files; checks hashes and Ed25519 signature
+- **Sealed recipients** — tap the badge on any sealed document to see who it was addressed to
+- **Owner key transfer** — securely copy an `O:` key to another device via a signed, sealed transfer document
+- **Deliver** — download or share `.sealed` files from the Documents list
+- **Verify** — drag-and-drop `.sealed` files; checks hashes, Ed25519 signature, and handles key transfer imports
 - **Contacts** — import key cards via QR scan or paste; quarantine management
-- **Device name** — shown in your key card QR so contacts can identify which device a key came from
 - **Identicons** — deterministic 5×5 pixel grid from SHA-256 of public key
+- **Pluggable render engines** — `ssd-render-1.0` (text), `ssd-json-1.0` (JSON), `ssd-key-transfer-1.0` (key transfer)
 - **PWA** — installs offline, service worker caches shell
 
 ## Running
@@ -74,18 +104,19 @@ docs/               — specification
 
 ## Artifact Format (`.sealed`)
 
-A ZIP containing:
-- `manifest.json`  — metadata, render spec, SHA-256 hashes of source and render
-- `source.txt`     — canonical wrapped document text
-- `render.txt`     — source + signature attestation block
+A ZIP archive containing:
+- `manifest.json`  — metadata, render spec, SHA-256 hashes of content files
 - `signature.json` — Ed25519 signature over `manifest.json` bytes
+- Engine-specific content files (e.g. `source.txt` + `render.txt`, or `source.json`)
 
-Encrypted artifacts add an outer envelope with per-recipient X25519 key encapsulation.
+Encrypted artifacts are wrapped in a `sealed-enc-v1` JSON envelope with per-recipient X25519 key encapsulation slots before the ZIP payload.
+
+Key transfer artifacts use `render_spec: ssd-key-transfer-1.0` and carry the owner key's private bytes inside the encryption envelope.
 
 ## Architecture
 
 All JavaScript lives in `index.html` as named const objects:
-`db` · `opfsStore` · `cryptoOps` · `passkey` · `keyring` · `signer` · `artifact` · `identicon` · `ui` · `app`
+`db` · `opfsStore` · `cryptoOps` · `passkey` · `keyring` · `signer` · `renderEngines` · `artifact` · `identicon` · `ui` · `app`
 
 All cryptography uses the native WebCrypto API. Storage is IndexedDB (metadata) + OPFS (artifact blobs). Nothing sensitive is stored unencrypted or in localStorage.
 
@@ -95,8 +126,8 @@ All cryptography uses the native WebCrypto API. Storage is IndexedDB (metadata) 
 |-------|------|--------|
 | 1 | Core loop — sign, verify, key management | ✅ Complete |
 | 2 | Key exchange — QR codes, paste import, contact keyring | ✅ Complete |
-| 3 | Encryption — per-recipient encrypted artifacts | ✅ Complete |
-| 4 | Backup/restore — sealed document format for private key transfer | Planned |
+| 3 | Encryption — per-recipient sealed artifacts | ✅ Complete |
+| 4 | Identity model — D:/O: keys, device naming, owner key transfer | ✅ Complete |
 | 5 | New document types — contacts export, key bundles | Planned |
 
 ## Browser Requirements
