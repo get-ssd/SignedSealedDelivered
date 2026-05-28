@@ -306,6 +306,11 @@
       </div>
     </div>
     <div class="settings-block">
+      <h3>Factory Reset</h3>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Wipes all data on this device: keys, contacts, documents, and settings. Use this to start completely fresh. Downloaded <code>.sealed</code> files are not affected.</p>
+      <button class="btn-danger" onclick="app.factoryReset()">Wipe all data…</button>
+    </div>
+    <div class="settings-block">
       <h3>About</h3>
       <p style="margin-bottom:8px">Signed, Sealed, Delivered &mdash; <span id="about-version" class="mono"></span></p>
       <p style="margin-bottom:8px">Certificate-grade document signing and verification. Sign documents with your passkey, share your public key card, and verify that a document has not been altered since it was signed.</p>
@@ -436,7 +441,7 @@
 'use strict';
 
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v43';
+const APP_VERSION = 'ssd-v44';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 
@@ -2109,6 +2114,30 @@ const app = {
     ui.display('<div class="ok">Cleared. You can now register a new passkey.</div>');
     await this.checkPasskeyStatus();
     await this.loadKeyring();
+  },
+
+  async factoryReset() {
+    if (!confirm('Wipe ALL data on this device?\n\nThis deletes every key, contact, document, and setting. It cannot be undone.\n\nDownloaded .sealed files are not affected.')) return;
+    try {
+      // Clear OPFS artifact blobs
+      try {
+        const root = await navigator.storage.getDirectory();
+        await root.removeEntry('artifacts', { recursive: true });
+      } catch { /* OPFS may be empty */ }
+      // Close DB connection then delete the entire database
+      db._db?.close();
+      await new Promise((resolve, reject) => {
+        const req = indexedDB.deleteDatabase('ssd-keyring');
+        req.onsuccess = resolve;
+        req.onerror   = () => reject(req.error);
+        req.onblocked = resolve; // proceed anyway
+      });
+      keyring._sessionKey = null;
+    } catch(e) {
+      alert('Reset failed: ' + e.message);
+      return;
+    }
+    location.reload();
   },
 
   async loadDevicesSection() {
