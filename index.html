@@ -385,6 +385,24 @@
     </div>
   </div>
 
+  <!-- KEY TRANSFER MODAL -->
+  <div id="transfer-key-modal" class="modal-overlay" style="display:none">
+    <div class="modal-backdrop" onclick="app.closeTransferModal()"></div>
+    <div class="modal-box">
+      <h3>Transfer key to device</h3>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">The transfer will be signed by your device key and sealed — only the chosen device can open it.</p>
+      <div class="form-group">
+        <label>Destination device</label>
+        <select id="transfer-key-contact-select"></select>
+      </div>
+      <div id="transfer-key-warn" style="display:none;color:var(--danger);font-size:13px;margin-top:8px"></div>
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button id="transfer-key-confirm-btn" onclick="app.confirmTransferKey()">Transfer</button>
+        <button class="btn-secondary" onclick="app.closeTransferModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <!-- QR SCAN MODAL -->
   <div id="scan-modal" class="modal-overlay" style="display:none">
     <div class="modal-backdrop"></div>
@@ -418,7 +436,7 @@
 'use strict';
 
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v42';
+const APP_VERSION = 'ssd-v43';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 
@@ -871,6 +889,33 @@ const keyring = {
     return cryptoOps.importPrivateKeyB64(privB64);
   },
 
+  async exportKeyB64(keyId) {
+    if (!this._sessionKey) throw new Error('Keyring locked — authenticate first.');
+    const rec = await db.get('my_keys', keyId);
+    if (!rec) throw new Error('Key not found.');
+    return cryptoOps.decryptPrivateKey(rec.private_key_encrypted, rec.private_key_iv, this._sessionKey);
+  },
+
+  async importKey(name, pubB64, privB64) {
+    if (!this._sessionKey) throw new Error('Keyring locked — authenticate first.');
+    const fingerprint = await cryptoOps.fingerprint(pubB64);
+    const existing = await db.getAll('my_keys');
+    if (existing.some(k => k.fingerprint === fingerprint))
+      throw new Error(`Key ${fingerprint} is already in your keyring.`);
+    const { ciphertext_b64, iv_b64 } = await cryptoOps.encryptPrivateKey(privB64, this._sessionKey);
+    const record = {
+      id: window.crypto.randomUUID(), name, fingerprint,
+      public_key_b64: pubB64,
+      private_key_encrypted: ciphertext_b64, private_key_iv: iv_b64,
+      identicon_algorithm: 'ssd-identicon-1.0', self_image_b64: null,
+      created: new Date().toISOString(),
+      expires: null, recheck_interval_days: null, revocation_hint: null,
+      is_default: existing.length === 0, is_revoked: false,
+    };
+    await db.put('my_keys', record);
+    return record;
+  },
+
   async exportKeyCard(keyId) {
     const rec = await db.get('my_keys', keyId);
     if (!rec) throw new Error('Key not found.');
@@ -1011,6 +1056,17 @@ const renderEngines = {
       pre.textContent = render;
       return pre;
     },
+  },
+
+  'ssd-key-transfer-1.0': {
+    _src(c) { return JSON.stringify({ key_name: c.key_name, signing_pub_b64: c.signing_pub_b64, signing_priv_b64: c.signing_priv_b64 }); },
+    pack(content)    { return { 'source.json': fflate.strToU8(this._src(content)) }; },
+    unpack(files)    {
+      if (!files['source.json']) throw new Error('Missing source.json in key transfer archive.');
+      return JSON.parse(fflate.strFromU8(files['source.json']));
+    },
+    hashTargets(content) { return { 'source.json': new TextEncoder().encode(this._src(content)) }; },
+    toElement()      { const d = document.createElement('div'); d.textContent = '[key transfer]'; return d; },
   },
 };
 
@@ -1363,6 +1419,7 @@ const app = {
         <button class="btn-secondary" onclick="app.startSign('${rec.id}')">Sign Document</button>
         <button class="btn-secondary" onclick="app.showKeyCardQR('${rec.id}')">Show QR</button>
         <button class="btn-secondary" onclick="app.validateKey('${rec.id}')">Validate</button>
+        ${rec.name.startsWith('O:') ? `<button class="btn-secondary" onclick="app.transferOwnerKey('${rec.id}')">Transfer to device…</button>` : ''}
         <button class="btn-danger" onclick="app.deleteKey('${rec.id}')">Delete</button>
       </div>`;
     return div;
@@ -1696,6 +1753,128 @@ const app = {
     }
   },
 
+  async transferOwnerKey(keyId) {
+    this._transferKeyId = keyId;
+    const contacts = (await db.getAll('contacts')).filter(c => c.encryption_key_pub);
+    const sel  = document.getElementById('transfer-key-contact-select');
+    const warn = document.getElementById('transfer-key-warn');
+    const btn  = document.getElementById('transfer-key-confirm-btn');
+    if (!contacts.length) {
+      sel.innerHTML = '<option value="">— No paired devices —</option>';
+      warn.textContent = 'No contacts with encryption keys. Pair with another device first.';
+      warn.style.display = 'block';
+      btn.disabled = true;
+    } else {
+      sel.innerHTML = contacts.map(c => `<option value="${c.id}">${c.local_name}</option>`).join('');
+      warn.style.display = 'none';
+      btn.disabled = false;
+    }
+    document.getElementById('transfer-key-modal').style.display = 'flex';
+  },
+
+  closeTransferModal() {
+    document.getElementById('transfer-key-modal').style.display = 'none';
+  },
+
+  async confirmTransferKey() {
+    const contactId = document.getElementById('transfer-key-contact-select').value;
+    if (!contactId) return;
+    this.closeTransferModal();
+    await this.doTransferKey(this._transferKeyId, contactId);
+  },
+
+  async doTransferKey(ownerKeyId, contactId) {
+    ui.clear();
+    ui.display('Preparing key transfer…');
+    try {
+      await keyring.ensureUnlocked();
+
+      const ownerRec = await db.get('my_keys', ownerKeyId);
+      const privB64  = await keyring.exportKeyB64(ownerKeyId);
+
+      // Sign with the device key (D: prefix preferred, else default)
+      const allMyKeys = await db.getAll('my_keys');
+      const signerRec = allMyKeys.find(k => k.name.startsWith('D:') && !k.is_revoked)
+                     || allMyKeys.find(k => k.is_default && !k.is_revoked);
+      if (!signerRec) throw new Error('No device key to sign with — create one in Me → Keys.');
+
+      const contact = await db.get('contacts', contactId);
+      if (!contact?.encryption_key_pub) throw new Error('Contact has no encryption key.');
+
+      const enc       = new TextEncoder();
+      const timestamp = new Date().toISOString();
+      const content   = { key_name: ownerRec.name, signing_pub_b64: ownerRec.public_key_b64, signing_priv_b64: privB64 };
+      const engine    = renderEngines['ssd-key-transfer-1.0'];
+
+      const fileHashes = {};
+      for (const [fname, bytes] of Object.entries(engine.hashTargets(content)))
+        fileHashes[fname] = 'sha256:' + await cryptoOps.sha256(bytes);
+
+      const privateKey  = await keyring.getPrivateKey(signerRec.id);
+      const manifestObj = {
+        version: '1.0', render_spec: 'ssd-key-transfer-1.0',
+        signed_at: timestamp, signer_fingerprint: signerRec.fingerprint, signer_name: signerRec.name,
+        files: fileHashes,
+      };
+      const manifestBytes = enc.encode(JSON.stringify(manifestObj, null, 2));
+      const signature     = await cryptoOps.sign(privateKey, manifestBytes);
+      const manifestHash  = 'sha256:' + await cryptoOps.sha256(manifestBytes);
+      const signatureObj  = { algorithm: 'Ed25519', signer_fingerprint: signerRec.fingerprint, signed_at: timestamp, manifest_hash: manifestHash, signature };
+      const innerZip      = await artifact.pack(content, 'ssd-key-transfer-1.0', manifestObj, signatureObj);
+
+      const outerMeta = JSON.stringify({ ssd: 'sealed-enc-v1', signed_at: timestamp, signer_fingerprint: signerRec.fingerprint, manifest_hash: manifestHash });
+      const outerSig  = await cryptoOps.sign(privateKey, enc.encode(outerMeta));
+
+      const dekBytes     = window.crypto.getRandomValues(new Uint8Array(32));
+      const dekKey       = await cryptoOps.importAESKey(dekBytes);
+      const { iv_b64: dataIv, ct_b64: dataCt } = await cryptoOps.encryptBytes(innerZip, dekKey);
+      const recipientPub = await cryptoOps.importX25519PublicKeyB64(contact.encryption_key_pub);
+      const slot         = { for_key: contact.encryption_key_pub, ...await cryptoOps.wrapDEK(dekBytes, recipientPub) };
+      const envelope     = { ssd: 'sealed-enc-v1', signed_at: timestamp, signer_fingerprint: signerRec.fingerprint, manifest_hash: manifestHash, outer_sig: outerSig, recipients: [slot], iv: dataIv, ct: dataCt };
+      const outputBytes  = enc.encode(JSON.stringify(envelope));
+
+      const artifactId = window.crypto.randomUUID();
+      const opfsPath   = `artifacts/${artifactId}.sealed`;
+      await opfsStore.write(opfsPath, outputBytes);
+      await db.put('artifacts', {
+        id: artifactId, direction: 'sent', signed_by_key_id: signerRec.id,
+        fingerprint: signerRec.fingerprint,
+        artifact_hash: 'sha256:' + await cryptoOps.sha256(outputBytes),
+        render_spec: 'ssd-key-transfer-1.0', created: timestamp,
+        encrypted: true, encrypted_for: [contactId], opfs_path: opfsPath,
+        manifest_hash: manifestHash,
+        summary: `Key transfer: ${ownerRec.name} → ${contact.local_name}`,
+      });
+
+      this._deliverCtx = {
+        outputBytes, isSealed: true, sealedForCount: 1,
+        filename: `key-transfer-${Date.now()}.sealed`,
+        keyName: signerRec.name, fingerprint: signerRec.fingerprint,
+      };
+      ui.clear();
+      ui.showSection('deliver');
+    } catch(e) {
+      ui.clear();
+      ui.display(`<span class="fail">Transfer failed: ${e.message}</span>`);
+    }
+  },
+
+  async importTransferredKey() {
+    if (!this._pendingKeyImport) return;
+    const { key_name, signing_pub_b64, signing_priv_b64 } = this._pendingKeyImport;
+    this._pendingKeyImport = null;
+    ui.clear();
+    ui.display('Importing key…');
+    try {
+      await keyring.ensureUnlocked();
+      const rec = await keyring.importKey(key_name, signing_pub_b64, signing_priv_b64);
+      await this.loadKeyring();
+      ui.display(`<div class="ok">✓ Key <strong>${rec.name}</strong> imported. Find it in Me → Keys.</div>`);
+    } catch(e) {
+      ui.display(`<span class="fail">Import failed: ${e.message}</span>`);
+    }
+  },
+
   async verifyArtifact(file) {
     ui.clear();
     ui.display('Verifying…');
@@ -1758,6 +1937,35 @@ const app = {
       const unpacked = await artifact.unpack(zipBytes);
       const result   = await artifact.verify(unpacked);
       ui.clear();
+
+      // KEY TRANSFER — all security checks must pass before showing import UI
+      if (result.render_spec === 'ssd-key-transfer-1.0') {
+        const contactKeys  = await db.getAll('contact_keys');
+        const outerFp      = envelope?.signer_fingerprint;
+        const innerFp      = result.signer_fingerprint;
+        const signerContact = contactKeys.find(k => k.fingerprint === innerFp && !k.is_quarantined);
+        const reasons = [];
+        if (outerSigStatus?.ok !== true)    reasons.push('outer envelope signature missing or invalid');
+        if (!signerContact)                 reasons.push('signer is not a trusted contact on this device');
+        if (!result.signature_valid)        reasons.push('document signature invalid');
+        if (!result.content_unmodified)     reasons.push('content hash mismatch — file may be tampered');
+        if (outerFp !== innerFp)            reasons.push('envelope and document signers do not match');
+        if (reasons.length) {
+          ui.display(`<div class="fail" style="padding:12px;border-radius:var(--radius)"><strong>Key transfer rejected</strong><br><br>${reasons.join('<br>')}</div>`);
+          return;
+        }
+        this._pendingKeyImport = { ...unpacked.content };
+        const { key_name } = unpacked.content;
+        ui.display(`<div class="settings-block">
+          <h3>Key Transfer</h3>
+          <p style="margin-bottom:8px">From <strong>${signerContact.name}</strong> — all signatures verified.</p>
+          <p style="margin-bottom:16px">Import signing key <strong>${key_name}</strong>?</p>
+          <div style="display:flex;gap:8px">
+            <button onclick="app.importTransferredKey()">Import key</button>
+            <button class="btn-secondary" onclick="app._pendingKeyImport=null;ui.clear()">Reject</button>
+          </div></div>`);
+        return;
+      }
 
       if (wasEncrypted) {
         const rCount = envelope.recipients?.length ?? 0;
