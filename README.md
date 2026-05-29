@@ -1,10 +1,15 @@
-# Signed, Sealed, Delivered (SSD)
+# Signed, Sealed, Delivered
 
-A cryptographic document signing and verification tool that runs entirely in the browser. No server, no accounts, no cloud.
+Cryptographic document signing and verification that runs entirely in the browser. No server, no accounts, no cloud.
+
+Part of the SSD ecosystem:
+- **Signed, Sealed, Delivered** (this repo) — the signing tool. Author-side: key management, signing, sealing, verification.
+- **ssd-tick** — browser extension for readers. Detects and verifies SSD-signed content on social media.
+- **ssd-vault** — publishing hub (planned). One signed artifact, many platform renditions.
 
 ## Current State
 
-**v43** — owner key transfer complete. Full identity model in place: device keys, owner keys, contact pairing, and secure cross-device key transfer via sealed documents.
+**v45** — full identity model in place: device keys, owner keys, contact pairing, and secure cross-device key transfer via sealed documents.
 
 ## How It Works
 
@@ -128,7 +133,8 @@ All cryptography uses the native WebCrypto API. Storage is IndexedDB (metadata) 
 | 2 | Key exchange — QR codes, paste import, contact keyring | ✅ Complete |
 | 3 | Encryption — per-recipient sealed artifacts | ✅ Complete |
 | 4 | Identity model — D:/O: keys, device naming, owner key transfer | ✅ Complete |
-| 5 | New document types — contacts export, key bundles | Planned |
+| 5 | Social layer — compact inline token format for social media posts, key bundle documents for Tick import | Planned |
+| 6 | Vault integration — generate platform renditions from a single signed artifact | Planned |
 
 ## Browser Requirements
 
