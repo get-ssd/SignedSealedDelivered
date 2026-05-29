@@ -239,15 +239,15 @@
   <section id="verify" class="section">
     <h2>Open a document</h2>
     <div class="form-group">
-      <label>Select .sealed file</label>
-      <input id="verify-file" type="file" accept=".sealed" onchange="if(this.files[0])app.verifyArtifact(this.files[0])">
+      <label>Select .ssd file</label>
+      <input id="verify-file" type="file" accept=".ssd" onchange="if(this.files[0])app.verifyArtifact(this.files[0])">
     </div>
     <div id="verify-drop" class="drop-zone"
          ondragover="event.preventDefault();this.classList.add('drag-over')"
          ondragleave="this.classList.remove('drag-over')"
          ondrop="app.handleDrop(event)"
          onclick="document.getElementById('verify-file').click()">
-      Drop a .sealed file here, or click to select
+      Drop a .ssd file here, or click to select
     </div>
   </section>
 
@@ -307,7 +307,7 @@
     </div>
     <div class="settings-block">
       <h3>Factory Reset</h3>
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Wipes all data on this device: keys, contacts, documents, and settings. Use this to start completely fresh. Downloaded <code>.sealed</code> files are not affected.</p>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Wipes all data on this device: keys, contacts, documents, and settings. Use this to start completely fresh. Downloaded <code>.ssd</code> files are not affected.</p>
       <button class="btn-danger" onclick="app.factoryReset()">Wipe all data…</button>
     </div>
     <div class="settings-block">
@@ -441,7 +441,7 @@
 'use strict';
 
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v45';
+const APP_VERSION = 'ssd-v46';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 
@@ -1095,7 +1095,7 @@ const artifact = {
   async unpack(sealedBytes) {
     let files;
     try { files = fflate.unzipSync(sealedBytes); }
-    catch { throw new Error('File is not a valid .sealed archive.'); }
+    catch { throw new Error('File is not a valid .ssd archive.'); }
     for (const f of ['manifest.json', 'signature.json'])
       if (!files[f]) throw new Error(`Missing ${f} in archive.`);
     const manifest  = JSON.parse(fflate.strFromU8(files['manifest.json']));
@@ -1626,7 +1626,7 @@ const app = {
       }
 
       const artifactId = window.crypto.randomUUID();
-      const opfsPath   = `artifacts/${artifactId}.sealed`;
+      const opfsPath   = `artifacts/${artifactId}.ssd`;
       await opfsStore.write(opfsPath, outputBytes);
       await db.put('artifacts', {
         id: artifactId, direction: 'sent', signed_by_key_id: keyId,
@@ -1641,7 +1641,7 @@ const app = {
       this._sigCtx = null;
       this._deliverCtx = {
         outputBytes,
-        filename: `ssd-${rec.fingerprint}-${Date.now()}.sealed`,
+        filename: `ssd-${rec.fingerprint}-${Date.now()}.ssd`,
         keyName: rec.name,
         fingerprint: rec.fingerprint,
         isSealed,
@@ -1702,7 +1702,7 @@ const app = {
       const outputBytes = await opfsStore.read(a.opfs_path);
       this._deliverCtx = {
         outputBytes,
-        filename: `ssd-${a.fingerprint}-${Date.now()}.sealed`,
+        filename: `ssd-${a.fingerprint}-${Date.now()}.ssd`,
         keyName: sigKey?.name || a.fingerprint,
         fingerprint: a.fingerprint,
         isSealed: a.encrypted,
@@ -1844,7 +1844,7 @@ const app = {
       const outputBytes  = enc.encode(JSON.stringify(envelope));
 
       const artifactId = window.crypto.randomUUID();
-      const opfsPath   = `artifacts/${artifactId}.sealed`;
+      const opfsPath   = `artifacts/${artifactId}.ssd`;
       await opfsStore.write(opfsPath, outputBytes);
       await db.put('artifacts', {
         id: artifactId, direction: 'sent', signed_by_key_id: signerRec.id,
@@ -1858,7 +1858,7 @@ const app = {
 
       this._deliverCtx = {
         outputBytes, isSealed: true, sealedForCount: 1,
-        filename: `key-transfer-${Date.now()}.sealed`,
+        filename: `key-transfer-${Date.now()}.ssd`,
         keyName: signerRec.name, fingerprint: signerRec.fingerprint,
       };
       ui.clear();
@@ -2116,7 +2116,7 @@ const app = {
   },
 
   async factoryReset() {
-    if (!confirm('Wipe ALL data on this device?\n\nThis deletes every key, contact, document, and setting. It cannot be undone.\n\nDownloaded .sealed files are not affected.')) return;
+    if (!confirm('Wipe ALL data on this device?\n\nThis deletes every key, contact, document, and setting. It cannot be undone.\n\nDownloaded .ssd files are not affected.')) return;
     try {
       // Clear OPFS artifact blobs
       try {
@@ -2352,7 +2352,7 @@ const app = {
   async deleteDoc(id) {
     const a = await db.get('artifacts', id);
     if (!a) return;
-    if (!confirm('Delete this document record? The .sealed file you downloaded is not affected.')) return;
+    if (!confirm('Delete this document record? The .ssd file you downloaded is not affected.')) return;
     await db.del('artifacts', id);
     if (a.opfs_path) {
       try {

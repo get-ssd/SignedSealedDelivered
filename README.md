@@ -49,7 +49,7 @@ To use the same owner key on multiple devices:
 
 1. **Pair first** — both devices must have scanned each other's key card
 2. On the source device: Me → Keys → tap the `O:` key → **Transfer to device…** → pick the destination
-3. The app signs the transfer with your device key (`D:`), seals it for the destination's encryption key, and delivers a `.sealed` file
+3. The app signs the transfer with your device key (`D:`), seals it for the destination's encryption key, and delivers a `.ssd` file
 4. On the destination device: open the file — the app verifies five security checks before showing the import prompt:
    - Outer envelope signature valid
    - Inner document signature valid
@@ -73,12 +73,12 @@ Recipients can include yourself (to keep a readable copy), contacts, or other de
 - **Key card** — self-signed JSON exportable as QR or file; verifiable without the app
 - **Device naming** — naming a device auto-offers a matching `D:` key; rename offers rename-or-fresh-keypair
 - **Drafts** — compose and save documents before signing
-- **Sign** — compose → canonical render → biometric confirmation → `.sealed` artifact
+- **Sign** — compose → canonical render → biometric confirmation → `.ssd` artifact
 - **Seal / Reseal** — encrypt artifacts to one or more recipients by public key
 - **Sealed recipients** — tap the badge on any sealed document to see who it was addressed to
 - **Owner key transfer** — securely copy an `O:` key to another device via a signed, sealed transfer document
-- **Deliver** — download or share `.sealed` files from the Documents list
-- **Verify** — drag-and-drop `.sealed` files; checks hashes, Ed25519 signature, and handles key transfer imports
+- **Deliver** — download or share `.ssd` files from the Documents list
+- **Verify** — drag-and-drop `.ssd` files; checks hashes, Ed25519 signature, and handles key transfer imports
 - **Contacts** — import key cards via QR scan or paste; quarantine management
 - **Identicons** — deterministic 5×5 pixel grid from SHA-256 of public key
 - **Pluggable render engines** — `ssd-render-1.0` (text), `ssd-json-1.0` (JSON), `ssd-key-transfer-1.0` (key transfer)
@@ -107,7 +107,7 @@ generate-icons.py   — run once to regenerate icons if needed
 docs/               — specification
 ```
 
-## Artifact Format (`.sealed`)
+## Artifact Format (`.ssd` files)
 
 A ZIP archive containing:
 - `manifest.json`  — metadata, render spec, SHA-256 hashes of content files
