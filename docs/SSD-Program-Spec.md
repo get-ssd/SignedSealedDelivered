@@ -14,7 +14,7 @@ The reference PWA in this project (`index.html` — Bitcoin Block Verifier) show
 
 ## 1. Project Overview
 
-SSD is a cryptographic signing and verification tool. Users generate keypairs, sign plain-text documents with a biometric passkey confirmation, and produce `.sealed` artifacts that anyone can verify. All cryptography runs in the browser. Nothing sensitive leaves the device unencrypted.
+SSD is a cryptographic signing and verification tool. Users generate keypairs, sign plain-text documents with a biometric passkey confirmation, and produce `.ssd` artifacts that anyone can verify. All cryptography runs in the browser. Nothing sensitive leaves the device unencrypted.
 
 **Core guarantee:** what the signer confirmed is exactly what the verifier sees. The render is the contract.
 
@@ -52,7 +52,7 @@ Single-file application. All HTML, CSS, and JS live in `index.html`. No separate
 | Storage | IndexedDB | Via thin wrapper (see §5) |
 | QR generation | `qrcode` library (CDN) | Generation only, Phase 2+ |
 | QR scanning | `jsQR` library (CDN) | Scanning only, Phase 2+ |
-| ZIP packaging | `fflate` (CDN) | `.sealed` container, Phase 1 |
+| ZIP packaging | `fflate` (CDN) | `.ssd` container, Phase 1 |
 | Markdown | None — Phase 1 is plain text | Deferred |
 | Canvas | None — Phase 1 is plain text render | Deferred |
 
@@ -79,7 +79,7 @@ CDN base: `https://cdnjs.cloudflare.com` — consistent with existing PWAs.
   "file_handlers": [
     {
       "action": "./index.html",
-      "accept": { "application/x-ssd-sealed": [".sealed"] }
+      "accept": { "application/x-ssd": [".ssd"] }
     }
   ],
   "share_target": {
@@ -88,7 +88,7 @@ CDN base: `https://cdnjs.cloudflare.com` — consistent with existing PWAs.
     "enctype": "multipart/form-data",
     "params": {
       "files": [
-        { "name": "artifact", "accept": ["application/x-ssd-sealed", ".sealed"] }
+        { "name": "artifact", "accept": ["application/x-ssd", ".ssd"] }
       ]
     }
   }
@@ -179,7 +179,7 @@ Stores contacts' public keys.
 ```
 
 #### `artifacts`
-Stores sent and received artifacts (metadata only — full `.sealed` blobs in OPFS).
+Stores sent and received artifacts (metadata only — full `.ssd` blobs in OPFS).
 
 ```javascript
 {
@@ -192,7 +192,7 @@ Stores sent and received artifacts (metadata only — full `.sealed` blobs in OP
   created: "2026-05-02T10:30:00Z",
   encrypted: false,
   encrypted_for: [],
-  opfs_path: "artifacts/uuid-v4.sealed",
+  opfs_path: "artifacts/uuid-v4.ssd",
   summary: "First 80 chars of source text..."
 }
 ```
@@ -240,7 +240,7 @@ const passkey = { ... }      // WebAuthn operations
 const keyring = { ... }      // Key management business logic
 const signer = { ... }       // Document signing
 const verifier = { ... }     // Document verification
-const artifact = { ... }     // .sealed package creation and parsing
+const artifact = { ... }     // .ssd package creation and parsing
 const identicon = { ... }    // Identicon rendering
 const ui = { ... }           // showSection, displayResult, clearResult, etc.
 const app = { ... }          // Init and top-level orchestration
@@ -402,7 +402,7 @@ signer.signDocument(myKeyId, rawText)
 // 7. Build manifest JSON
 // 8. passkey.confirmAndSign(privateKey, manifestBytes) → signature
 // 9. Insert signature into signature block
-// 10. Package into .sealed via artifact.pack()
+// 10. Package into .ssd via artifact.pack()
 // 11. Store artifact record in IndexedDB + blob in OPFS
 // Returns artifact record
 ```
@@ -413,7 +413,7 @@ signer.signDocument(myKeyId, rawText)
 
 ```javascript
 artifact.pack(sourceText, renderText, manifestObj, signatureObj)
-// Builds a .sealed ZIP containing:
+// Builds a .ssd ZIP containing:
 //   manifest.json
 //   source.txt
 //   render.txt
@@ -421,8 +421,8 @@ artifact.pack(sourceText, renderText, manifestObj, signatureObj)
 // Returns Uint8Array (ZIP bytes)
 // Uses fflate for ZIP creation
 
-artifact.unpack(sealedBytes)
-// Parses .sealed ZIP
+artifact.unpack(ssdBytes)
+// Parses .ssd ZIP
 // Returns { manifest, source, render, signature, chain }
 
 artifact.verify(unpacked)
@@ -442,7 +442,7 @@ artifact.verify(unpacked)
 Follows the exact same pattern as the Bitcoin Verifier's `opfs` object.
 
 ```javascript
-opfsStore.write(path, bytes)    // e.g. "artifacts/uuid.sealed"
+opfsStore.write(path, bytes)    // e.g. "artifacts/uuid.ssd"
 opfsStore.read(path)            // Returns Uint8Array
 opfsStore.delete(path)
 opfsStore.list(dir)             // Returns array of filenames
@@ -450,7 +450,7 @@ opfsStore.export(path, filename) // Triggers browser download
 ```
 
 Directories used:
-- `artifacts/` — `.sealed` blobs for sent/received artifacts
+- `artifacts/` — `.ssd` blobs for sent/received artifacts
 - `keycards/` — exported key card JSON files
 - `imports/` — received artifacts pending verification
 
@@ -627,9 +627,9 @@ Before Phase 2 begins, all of the following must work end-to-end:
 - [ ] Key card exports as valid self-signed JSON
 - [ ] Key card self-signature verifies correctly
 - [ ] Compose → preview → biometric confirm → signed artifact flow completes
-- [ ] `.sealed` ZIP is produced and contains the correct files
+- [ ] `.ssd` ZIP is produced and contains the correct files
 - [ ] Hashes in manifest match actual file contents
-- [ ] Verify section accepts a `.sealed` file and returns a correct verification result
+- [ ] Verify section accepts a `.ssd` file and returns a correct verification result
 - [ ] App installs as a PWA and works offline after first load
 
 ### Phase 2 Gate — Key Exchange ✓
@@ -648,12 +648,12 @@ Before Phase 2 begins, all of the following must work end-to-end:
 - [ ] Multi-recipient works — each recipient can independently decrypt
 - [ ] Author can re-read their own encrypted artifact
 - [ ] Logged access mode declared in manifest and communicated to recipient before open
-- [ ] Encrypted `.sealed` artifacts verify correctly (signature covers encrypted content)
+- [ ] Encrypted `.ssd` artifacts verify correctly (signature covers encrypted content)
 
 ### Phase 4 Gate — Integration ✓
 
-- [ ] OS file handler routes `.sealed` files to the app
-- [ ] Share target receives `.sealed` artifacts from other apps
+- [ ] OS file handler routes `.ssd` files to the app
+- [ ] Share target receives `.ssd` artifacts from other apps
 - [ ] Receipt countersignature appends to `chain/` without breaking original signature
 - [ ] Full verify + decrypt + display flow works for all encryption modes
 
@@ -667,7 +667,7 @@ Specific cases to handle gracefully:
 - WebAuthn not available (HTTPS required — show setup instructions)
 - PRF extension not supported (fall back, note in UI)
 - IndexedDB quota exceeded (prompt export before proceeding)
-- `.sealed` file unreadable / corrupt (show specific parse error)
+- `.ssd` file unreadable / corrupt (show specific parse error)
 - Signature verification failure (show clearly — do not soft-fail)
 - Key not found for fingerprint (show fingerprint, offer to import key card)
 
@@ -710,8 +710,8 @@ These are non-negotiable. Do not work around them even if it seems convenient.
 > - IndexedDB keyring with encrypted private key storage
 > - Identicon rendering (ssd-identicon-1.0 — 5×5 mirrored pixel grid from SHA-256 of public key)
 > - Key card export (self-signed JSON)
-> - Plain text document compose → canonical render preview → biometric confirm → .sealed artifact
-> - .sealed artifact verification (signature, hash, render spec check)
+> - Plain text document compose → canonical render preview → biometric confirm → .ssd artifact
+> - .ssd artifact verification (signature, hash, render spec check)
 > - Dark theme UI with gold accent (#c8a96e), sections: keyring / newKey / compose / verify / settings
 > - Service worker and manifest as specified
 >
