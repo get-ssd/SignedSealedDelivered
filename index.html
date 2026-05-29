@@ -251,11 +251,56 @@
     </div>
   </section>
 
+  <!-- SOCIAL SIGN -->
+  <section id="socialSign" class="section">
+    <h2>Social Post</h2>
+    <div class="form-group">
+      <label>Signing Key</label>
+      <select id="social-key-select"></select>
+    </div>
+    <div class="form-group">
+      <label>Identity hint</label>
+      <input id="social-identity" type="text" placeholder="e.g. fb:paulsmith or https://example.com/key.json">
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Tells readers where to find your key. Platform handle (fb:, tw:, li:) or key URL.</div>
+    </div>
+    <div class="form-group">
+      <label>Post text</label>
+      <textarea id="social-text" placeholder="Write your post here…"></textarea>
+    </div>
+    <button onclick="app.previewSocialSign()">Review →</button>
+  </section>
+
+  <!-- SOCIAL CONFIRM -->
+  <section id="socialConfirm" class="section">
+    <div class="confirm-banner">
+      <h2>This is exactly what you are signing.</h2>
+      <p class="confirm-warning">The token will be appended when you post.</p>
+    </div>
+    <pre id="social-confirm-render" class="render-preview"></pre>
+    <div class="confirm-actions">
+      <button class="btn-large" onclick="app.confirmSocialSign()">Sign</button>
+      <a href="#" class="cancel-link" onclick="ui.showSection('socialSign');return false;">Cancel</a>
+    </div>
+  </section>
+
+  <!-- SOCIAL RESULT -->
+  <section id="socialResult" class="section">
+    <h2>Ready to post</h2>
+    <p class="muted" style="margin-bottom:16px">Copy this and paste it into your post. The token at the end proves you signed it.</p>
+    <pre id="social-result-text" class="render-preview" style="cursor:pointer" title="Click to copy" onclick="app.copySocialPost()"></pre>
+    <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <button onclick="app.copySocialPost()">Copy to clipboard</button>
+      <a href="#" class="cancel-link" onclick="ui.showSection('docs');return false;">Done</a>
+    </div>
+    <div id="social-copy-status" style="margin-top:8px;font-size:12px;min-height:16px"></div>
+  </section>
+
   <!-- DOCUMENTS -->
   <section id="docs" class="section active">
     <h2>Documents</h2>
     <div class="section-actions" style="margin-bottom:20px">
       <button onclick="app.newDocument()">New document</button>
+      <button class="btn-secondary" onclick="app.startSocialSign()">Social post</button>
       <button class="btn-secondary" onclick="ui.showSection('verify')">Open a document</button>
     </div>
     <div id="docs-list"></div>
@@ -1227,6 +1272,7 @@ const ui = {
   showSection(id) {
     const NAV_PARENT = {
       docs: 'documents', compose: 'documents', signConfirm: 'documents', seal: 'documents', deliver: 'documents', verify: 'documents',
+      socialSign: 'documents', socialConfirm: 'documents', socialResult: 'documents',
       contacts: 'contacts',
       keyring: 'me', newKey: 'me', settings: 'me',
     };
@@ -1238,10 +1284,11 @@ const ui = {
     const btn = document.querySelector(`[data-section="${navKey}"]`);
     if (btn) btn.classList.add('active');
     this.clear();
-    if (id === 'keyring')   app.loadKeyring();
-    if (id === 'contacts')  app.loadContacts();
-    if (id === 'compose')   app.loadComposeKeys();
-    if (id === 'docs')      app.loadDocs();
+    if (id === 'keyring')    app.loadKeyring();
+    if (id === 'contacts')   app.loadContacts();
+    if (id === 'compose')    app.loadComposeKeys();
+    if (id === 'docs')       app.loadDocs();
+    if (id === 'socialSign') app.loadSocialKeys();
     if (id === 'seal')      app.loadSealRecipients();
     if (id === 'deliver')   app.loadDeliver();
     if (id === 'settings')  { app.checkPasskeyStatus(); app.checkEncryptionKeyStatus(); app.loadDevicesSection(); }
@@ -2957,6 +3004,82 @@ const app = {
     const banner = document.getElementById('webauthn-banner');
     const link   = document.getElementById('webauthn-banner-link');
     if (banner && link) { link.href = location.href; banner.style.display = ''; }
+  },
+
+  // ── Social signing ────────────────────────────────────────────────────────
+
+  async startSocialSign() {
+    await this.loadSocialKeys();
+    const saved = await db.get('settings', 'social_identity');
+    if (saved) document.getElementById('social-identity').value = saved.value;
+    document.getElementById('social-text').value = '';
+    ui.showSection('socialSign');
+  },
+
+  async loadSocialKeys() {
+    const sel = document.getElementById('social-key-select');
+    const keys = await db.getAll('my_keys');
+    sel.innerHTML = keys.length
+      ? keys.map(k => `<option value="${k.id}"${k.is_default?' selected':''}>${k.name} [${k.fingerprint}]</option>`).join('')
+      : '<option value="">— No keys —</option>';
+  },
+
+  async previewSocialSign() {
+    const text     = document.getElementById('social-text').value;
+    const keyId    = document.getElementById('social-key-select').value;
+    const identity = document.getElementById('social-identity').value.trim();
+    if (!text.trim()) { ui.display('<span class="warn">Please enter post text.</span>'); return; }
+    if (!keyId)       { ui.display('<span class="warn">Please select a signing key.</span>'); return; }
+    if (!identity)    { ui.display('<span class="warn">Please enter an identity hint.</span>'); return; }
+
+    const canonical = signer.canonicalise(text);
+    this._socialCtx = { keyId, canonical, identity };
+    document.getElementById('social-confirm-render').textContent = canonical;
+    ui.showSection('socialConfirm');
+  },
+
+  async confirmSocialSign() {
+    if (!this._socialCtx) { ui.showSection('socialSign'); return; }
+    const { keyId, canonical, identity } = this._socialCtx;
+    ui.showSection('socialConfirm');
+    ui.display('Signing — confirm with your passkey…');
+    try {
+      await keyring.unlock();
+      const rec = await db.get('my_keys', keyId);
+      if (!rec) throw new Error('Key not found.');
+
+      // Minute-precision timestamp keeps the token compact
+      const timestamp  = new Date().toISOString().slice(0, 16) + 'Z';
+      const signedBytes = new TextEncoder().encode(canonical + '\n' + timestamp);
+      const privateKey  = await keyring.getPrivateKey(keyId);
+      const sig         = await cryptoOps.sign(privateKey, signedBytes);
+
+      await db.put('settings', { key: 'social_identity', value: identity });
+
+      const token    = `—SSD·${rec.fingerprint}·${identity}·${sig}·${timestamp}—`;
+      const fullPost = canonical.trimEnd() + '\n\n' + token;
+
+      this._socialResult = fullPost;
+      document.getElementById('social-result-text').textContent = fullPost;
+      document.getElementById('social-copy-status').textContent = '';
+      ui.clear();
+      ui.showSection('socialResult');
+    } catch (e) {
+      ui.clear();
+      ui.display(`<span class="fail">Signing failed: ${e.message}</span>`);
+      console.error(e);
+    }
+  },
+
+  async copySocialPost() {
+    if (!this._socialResult) return;
+    const statusEl = document.getElementById('social-copy-status');
+    try {
+      await navigator.clipboard.writeText(this._socialResult);
+      if (statusEl) { statusEl.textContent = '✓ Copied to clipboard'; statusEl.className = 'ok'; }
+    } catch {
+      if (statusEl) { statusEl.textContent = 'Copy failed — select and copy manually.'; statusEl.className = 'fail'; }
+    }
   },
 
   async retryWebAuthn() {
