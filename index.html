@@ -1473,9 +1473,11 @@ const app = {
       </div>
       <div class="key-card-actions">
         <button onclick="app.doExportKeyCard('${rec.id}')">Export Key Card</button>
+        <button class="btn-secondary" onclick="app.copyProfileKeyDeclaration('${rec.id}')">Copy bio key</button>
         <button class="btn-secondary" onclick="app.startSign('${rec.id}')">Sign Document</button>
         <button class="btn-secondary" onclick="app.showKeyCardQR('${rec.id}')">Show QR</button>
         <button class="btn-secondary" onclick="app.validateKey('${rec.id}')">Validate</button>
+        <button class="btn-secondary" onclick="app.renameMyKey('${rec.id}')">Rename</button>
         ${rec.name.startsWith('O:') ? `<button class="btn-secondary" onclick="app.transferOwnerKey('${rec.id}')">Transfer to device…</button>` : ''}
         <button class="btn-danger" onclick="app.deleteKey('${rec.id}')">Delete</button>
       </div>`;
@@ -2118,6 +2120,38 @@ const app = {
     }
   },
 
+  async copyProfileKeyDeclaration(keyId) {
+    const rec = await db.get('my_keys', keyId);
+    if (!rec) { ui.display('<span class="fail">Key not found.</span>'); return; }
+    const token = `—SSD·${rec.fingerprint}·${rec.public_key_b64}—`;
+    try {
+      await navigator.clipboard.writeText(token);
+      ui.display(`<div class="ok">✓ Profile key copied — paste into your Facebook bio.</div>
+        <pre style="font-size:11px;font-family:var(--mono);margin-top:8px;word-break:break-all;color:var(--text-muted)">${token}</pre>`);
+    } catch {
+      ui.display(`<div class="muted" style="margin-bottom:6px;font-size:12px">Copy this into your Facebook bio:</div>
+        <pre style="font-size:11px;font-family:var(--mono);word-break:break-all;padding:10px;background:var(--surface-2);border-radius:4px;cursor:text">${token}</pre>`);
+    }
+  },
+
+  async renameMyKey(keyId) {
+    const rec = await db.get('my_keys', keyId);
+    if (!rec) return;
+    const newName = prompt('Rename key:', rec.name);
+    if (!newName || newName.trim() === rec.name) return;
+    await db.put('my_keys', { ...rec, name: newName.trim() });
+    await this.loadKeyring();
+  },
+
+  async renameContact(personId) {
+    const person = await db.get('contacts', personId);
+    if (!person) return;
+    const newName = prompt('Rename contact:', person.local_name);
+    if (!newName || newName.trim() === person.local_name) return;
+    await db.put('contacts', { ...person, local_name: newName.trim() });
+    await this.loadContacts();
+  },
+
   async registerPasskey() {
     const existing = await db.get('settings', 'credential_id');
     if (existing) {
@@ -2485,7 +2519,8 @@ const app = {
     div.innerHTML = `
       <div class="person-card-header">
         <img src="${imgSrc}" width="48" height="48" class="identicon" alt="">
-        <div><div class="person-name">${person.local_name}</div><div class="person-key-count">${keyLabel}</div></div>
+        <div style="flex:1"><div class="person-name">${person.local_name}</div><div class="person-key-count">${keyLabel}</div></div>
+        ${!quarantined ? `<button class="btn-secondary" style="font-size:11px;padding:4px 10px;flex-shrink:0" onclick="app.renameContact('${person.id}')">Rename</button>` : ''}
       </div>
       ${keysHtml}`;
     return div;
