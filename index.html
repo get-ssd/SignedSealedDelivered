@@ -1008,6 +1008,8 @@ const signer = {
   canonicalise(rawText) {
     let t = rawText.normalize('NFC').replace(/\r\n|\r/g, '\n');
     t = t.split('\n').map(l => l.trimEnd()).join('\n');
+    t = t.replace(/^\n+/, '').replace(/\n+$/, '');
+    t = this.wrap(t);
     if (!t.endsWith('\n')) t += '\n';
     return t;
   },
@@ -3085,7 +3087,9 @@ const app = {
 
       // Minute-precision timestamp keeps the token compact
       const timestamp  = new Date().toISOString().slice(0, 16) + 'Z';
-      const signedBytes = new TextEncoder().encode(canonical + '\n' + timestamp);
+      const hashBuf     = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
+      const contentHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,'0')).join('');
+      const signedBytes = new TextEncoder().encode(`${rec.fingerprint}·${identity}·${contentHash}·${timestamp}`);
       const privateKey  = await keyring.getPrivateKey(keyId);
       const sig         = await cryptoOps.sign(privateKey, signedBytes);
 
