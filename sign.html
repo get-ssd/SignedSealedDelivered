@@ -39,7 +39,7 @@
   <!-- PIN form — shown only when pin_fallback_enabled is active -->
   <div id="pin-form" style="display:none;margin-bottom:14px">
     <label style="display:block;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Signing PIN</label>
-    <input type="password" id="pin-input" placeholder="Enter PIN" autocomplete="current-password"
+    <input type="password" id="pin-input" placeholder="0000" maxlength="4" inputmode="numeric" pattern="\d{4}" autocomplete="current-password"
            style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:var(--radius);font-size:14px;font-family:inherit">
   </div>
   <div class="actions">
