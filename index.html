@@ -1328,8 +1328,8 @@ const app = {
     try {
       const a = await db.get('artifacts', id);
       if (!a) return;
-      ui.display('Unlocking — confirm with your passkey…');
-      await keyring.ensureUnlocked();
+      ui.display('Unlocking…');
+      await this._unlock();
 
       let innerZip;
       let manifestHash = a.manifest_hash;
@@ -1407,7 +1407,7 @@ const app = {
     ui.clear();
     ui.display('Preparing key transfer…');
     try {
-      await keyring.ensureUnlocked();
+      await this._unlock();
 
       const ownerRec = await db.get('my_keys', ownerKeyId);
       const privB64  = await keyring.exportKeyB64(ownerKeyId);
@@ -1486,7 +1486,7 @@ const app = {
     ui.clear();
     ui.display('Importing key…');
     try {
-      await keyring.ensureUnlocked();
+      await this._unlock();
       const rec = await keyring.importKey(key_name, signing_pub_b64, signing_priv_b64);
       await this.loadKeyring();
       ui.display(`<div class="ok">✓ Key <strong>${rec.name}</strong> imported. Find it in Me → Keys.</div>`);
@@ -1541,7 +1541,7 @@ const app = {
         if (!slot) throw new Error('This document is not addressed to any of this device\'s encryption keys.');
 
         ui.display('Encrypted document — authenticate to open…');
-        await keyring.ensureUnlocked();
+        await this._unlock();
         log('dec-7: unlocked, getting enc private key for', slot.for_key.slice(0, 8) + '…');
         const myPriv   = await keyring.getEncryptionPrivateKey(slot.for_key);
         log('dec-8: got priv key, unwrapping DEK');
@@ -1651,7 +1651,7 @@ const app = {
     ui.clear();
     ui.display('Preparing key card…');
     try {
-      await keyring.ensureUnlocked();
+      await this._unlock();
       const card = await keyring.exportKeyCard(keyId);
 
       // Verify self-signature before export
@@ -1872,7 +1872,7 @@ const app = {
       if (k.is_current) await db.del('encryption_keys', k.pub);
     }
     await db.del('settings', 'my_encryption_key_pub');
-    await keyring.ensureUnlocked();
+    await this._unlock();
     await keyring.ensureEncryptionKey();
     await this.checkEncryptionKeyStatus();
     ui.display('<span class="ok">New encryption key generated.</span>');
@@ -1880,7 +1880,7 @@ const app = {
 
   async generateEncryptionKey() {
     try {
-      await keyring.ensureUnlocked();
+      await this._unlock();
       await keyring.ensureEncryptionKey();
       await this.checkEncryptionKeyStatus();
       ui.display('<div class="ok">✓ Encryption key generated.</div>');
@@ -2226,7 +2226,7 @@ const app = {
 
   async showKeyCardQR(keyId) {
     try {
-      await keyring.ensureUnlocked();
+      await this._unlock();
       const card = await keyring.exportKeyCard(keyId);
       const deviceNameSetting = await db.get('settings', 'my_device_name');
       const deviceName = deviceNameSetting ? deviceNameSetting.value : null;
@@ -2747,10 +2747,11 @@ const app = {
     });
   },
 
-  // Unlock keyring, showing a PIN overlay if needed.
-  async _unlock(pin = null) {
+  // Unlock keyring, showing a PIN overlay if needed. No-op if already unlocked.
+  async _unlock() {
+    if (keyring._sessionKey) return;
     try {
-      await keyring.unlock(pin);
+      await keyring.unlock();
     } catch (e) {
       if (!e.pinRequired) throw e;
       const entered = await this._promptPin();
