@@ -350,6 +350,21 @@
         </div>
       </div>
     </div>
+    <div class="settings-block" id="pin-fallback-block">
+      <h3>PIN Fallback <span class="badge badge-danger">Dev only</span></h3>
+      <p style="color:var(--warning);font-size:12px;margin-bottom:10px">⚠ Replaces passkey hardware-bound encryption with a password. Keys created while enabled are NOT protected by your biometric. Disable to restore the secure model — you will need to create fresh keys.</p>
+      <div id="pin-fallback-status" style="font-size:13px;margin-bottom:10px">Checking…</div>
+      <div id="pin-fallback-enable-ui" style="display:none">
+        <div class="form-group">
+          <label>PIN (min 6 characters)</label>
+          <input type="password" id="pin-setup-input" placeholder="Enter a PIN" maxlength="64" autocomplete="new-password">
+        </div>
+        <button onclick="app.enablePinFallback()">Enable PIN fallback</button>
+      </div>
+      <div id="pin-fallback-disable-ui" style="display:none">
+        <button class="btn-danger" onclick="app.disablePinFallback()">Disable PIN fallback</button>
+      </div>
+    </div>
     <div class="settings-block">
       <h3>Factory Reset</h3>
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Wipes all data on this device: keys, contacts, documents, and settings. Use this to start completely fresh. Downloaded <code>.ssd</code> files are not affected.</p>
@@ -837,7 +852,7 @@ const ui = {
     if (id === 'socialSign') app.loadSocialKeys();
     if (id === 'seal')      app.loadSealRecipients();
     if (id === 'deliver')   app.loadDeliver();
-    if (id === 'settings')  { app.checkPasskeyStatus(); app.checkEncryptionKeyStatus(); app.loadDevicesSection(); }
+    if (id === 'settings')  { app.checkPasskeyStatus(); app.checkEncryptionKeyStatus(); app.loadDevicesSection(); app.checkPinFallbackStatus(); }
   },
   display(html) {
     const r = document.getElementById('results');
@@ -1088,10 +1103,10 @@ const app = {
     const { keyId, wrapped, timestamp, render, rec } = this._sigCtx;
 
     ui.showSection('signConfirm');
-    ui.display('Signing — confirm with your passkey…');
+    ui.display('Signing…');
 
     try {
-      await keyring.unlock();
+      await this._unlock();
 
       const enc    = new TextEncoder();
       const engine = renderEngines['ssd-render-1.0'];
@@ -1600,6 +1615,7 @@ const app = {
     ui.clear();
     ui.display('Generating keypair…');
     try {
+      await this._unlock();
       const rec = await keyring.createKey(name);
       document.getElementById('new-key-name').value = '';
       ui.clear();
@@ -2623,9 +2639,9 @@ const app = {
     if (!this._socialCtx) { ui.showSection('socialSign'); return; }
     const { keyId, canonical, identity } = this._socialCtx;
     ui.showSection('socialConfirm');
-    ui.display('Signing — confirm with your passkey…');
+    ui.display('Signing…');
     try {
-      await keyring.unlock();
+      await this._unlock();
       const rec = await db.get('my_keys', keyId);
       if (!rec) throw new Error('Key not found.');
 
@@ -2670,6 +2686,77 @@ const app = {
     const banner = document.getElementById('webauthn-banner');
     if (banner) banner.style.display = 'none';
     ui.display('<span class="warn">Cleared — try your action again.</span>');
+  },
+
+  // ── PIN fallback (dev/testing) ─────────────────────────────────────────────
+
+  async checkPinFallbackStatus() {
+    const enabled = await keyring._pinFallbackEnabled();
+    const statusEl  = document.getElementById('pin-fallback-status');
+    const enableUI  = document.getElementById('pin-fallback-enable-ui');
+    const disableUI = document.getElementById('pin-fallback-disable-ui');
+    if (!statusEl) return;
+    if (enabled) {
+      statusEl.innerHTML = '<span class="ok">✓ PIN fallback enabled</span>';
+      if (enableUI)  enableUI.style.display  = 'none';
+      if (disableUI) disableUI.style.display = 'block';
+    } else {
+      statusEl.innerHTML = '<span class="muted">Disabled (secure mode active)</span>';
+      if (enableUI)  enableUI.style.display  = 'block';
+      if (disableUI) disableUI.style.display = 'none';
+    }
+  },
+
+  async enablePinFallback() {
+    const pin = document.getElementById('pin-setup-input')?.value || '';
+    if (pin.length < 6) { ui.display('<span class="warn">PIN must be at least 6 characters.</span>'); return; }
+    await keyring.enablePinFallback(pin);
+    document.getElementById('pin-setup-input').value = '';
+    await this.checkPinFallbackStatus();
+    ui.display('<span class="ok">✓ PIN fallback enabled. Create a new key to use it.</span>');
+  },
+
+  async disablePinFallback() {
+    await keyring.disablePinFallback();
+    await this.checkPinFallbackStatus();
+    ui.display('<span class="ok">✓ PIN fallback disabled — biometric model restored.</span>');
+  },
+
+  // Prompt for PIN using a floating overlay; resolves to the entered string or null.
+  _promptPin() {
+    return new Promise(resolve => {
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:500';
+      overlay.innerHTML = `
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:28px 24px;width:320px;max-width:90vw">
+          <h3 style="margin-bottom:14px;font-size:15px">Enter signing PIN</h3>
+          <input type="password" id="_pin-overlay-input" placeholder="PIN" autocomplete="current-password"
+                 style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:var(--radius);font-size:14px;font-family:inherit;margin-bottom:14px">
+          <div style="display:flex;gap:10px">
+            <button id="_pin-overlay-ok" style="flex:1">Confirm</button>
+            <button id="_pin-overlay-cancel" class="btn-secondary" style="flex:1">Cancel</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      const input = overlay.querySelector('#_pin-overlay-input');
+      input.focus();
+      const finish = val => { overlay.remove(); resolve(val); };
+      overlay.querySelector('#_pin-overlay-ok').addEventListener('click', () => finish(input.value));
+      overlay.querySelector('#_pin-overlay-cancel').addEventListener('click', () => finish(null));
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') finish(input.value); if (e.key === 'Escape') finish(null); });
+    });
+  },
+
+  // Unlock keyring, showing a PIN overlay if needed.
+  async _unlock(pin = null) {
+    try {
+      await keyring.unlock(pin);
+    } catch (e) {
+      if (!e.pinRequired) throw e;
+      const entered = await this._promptPin();
+      if (!entered) throw new Error('Cancelled.');
+      await keyring.unlock(entered);
+    }
   },
 };
 

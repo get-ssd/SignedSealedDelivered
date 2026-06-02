@@ -4,7 +4,19 @@
 const keyring = {
   _sessionKey: null,
 
-  async unlock() {
+  // unlock([pin]) — pass a PIN string when pin fallback is active, omit for PRF flow.
+  // Throws { pinRequired: true } when fallback is enabled but no PIN was supplied,
+  // so callers can show a PIN prompt then retry with the collected value.
+  async unlock(pin = null) {
+    if (await this._pinFallbackEnabled()) {
+      if (pin === null) {
+        const err = new Error('PIN fallback active — provide PIN to unlock');
+        err.pinRequired = true;
+        throw err;
+      }
+      this._sessionKey = await this._pinToAesKey(pin);
+      return this._sessionKey;
+    }
     const { aesKey, prfUnsupported } = await passkey.authenticate();
     if (prfUnsupported) {
       throw new Error('This passkey does not support secure key storage. Use a phone (Chrome on Android or Safari on iOS 18+) or a FIDO2 hardware key such as a YubiKey 5.');
@@ -13,9 +25,41 @@ const keyring = {
     return this._sessionKey;
   },
 
-  async ensureUnlocked() {
-    if (!this._sessionKey) await this.unlock();
+  async ensureUnlocked(pin = null) {
+    if (!this._sessionKey) await this.unlock(pin);
     return this._sessionKey;
+  },
+
+  // ── PIN fallback (dev/testing) ───────────────────────────────────────────────
+  // Enabled via Settings. Replaces passkey PRF with PBKDF2(pin, stored_salt).
+  // Keys created while enabled are encrypted with the PIN-derived AES key, not PRF.
+  // Disable to restore the biometric encryption model (requires fresh key creation).
+
+  async _pinFallbackEnabled() {
+    const s = await db.get('settings', 'pin_fallback_enabled');
+    return s?.value === true;
+  },
+
+  async _pinToAesKey(pin) {
+    const saltRec = await db.get('settings', 'pin_salt');
+    if (!saltRec?.value) throw new Error('No PIN configured — enable PIN fallback in Settings first.');
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveKey']
+    );
+    return crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt: cryptoOps.b64dec(saltRec.value), iterations: 200000, hash: 'SHA-256' },
+      keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+    );
+  },
+
+  async enablePinFallback(pin) {
+    const salt = crypto.getRandomValues(new Uint8Array(32));
+    await db.put('settings', { key: 'pin_salt',             value: cryptoOps.b64enc(salt) });
+    await db.put('settings', { key: 'pin_fallback_enabled', value: true });
+  },
+
+  async disablePinFallback() {
+    await db.put('settings', { key: 'pin_fallback_enabled', value: false });
   },
 
   async getEncryptionPrivateKey(pubB64) {

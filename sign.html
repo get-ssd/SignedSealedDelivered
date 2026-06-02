@@ -36,6 +36,12 @@
   </div>
   <pre id="preview" class="preview"></pre>
   <div id="status" class="status"></div>
+  <!-- PIN form — shown only when pin_fallback_enabled is active -->
+  <div id="pin-form" style="display:none;margin-bottom:14px">
+    <label style="display:block;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Signing PIN</label>
+    <input type="password" id="pin-input" placeholder="Enter PIN" autocomplete="current-password"
+           style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:var(--radius);font-size:14px;font-family:inherit">
+  </div>
   <div class="actions">
     <button id="sign-btn">Sign</button>
     <a href="#" id="cancel-link">Cancel</a>
@@ -72,6 +78,18 @@
     if (ctx.platform) platEl.textContent = `via ${ctx.platform}`;
     previewEl.textContent = _sp.get('preview') || '(no preview provided)';
 
+    const pinForm  = document.getElementById('pin-form');
+    const pinInput = document.getElementById('pin-input');
+
+    // Show PIN form if pin fallback is active
+    db.get('settings', 'pin_fallback_enabled').then(s => {
+      if (s?.value === true) {
+        pinForm.style.display = 'block';
+        signBtn.textContent = 'Sign with PIN';
+        pinInput.focus();
+      }
+    }).catch(() => {});
+
     function sendResponse(msg) {
       if (typeof chrome !== 'undefined' && chrome.runtime && ctx.extId) {
         chrome.runtime.sendMessage(ctx.extId, msg);
@@ -80,12 +98,26 @@
 
     async function doSign() {
       signBtn.disabled = true;
-      statusEl.textContent = 'Confirm with your passkey…';
+      const pin = pinForm.style.display !== 'none' ? pinInput.value : null;
+      statusEl.textContent = 'Signing…';
       try {
         const keys = await db.getAll('my_keys');
         const rec  = keys.find(k => k.fingerprint === ctx.fingerprint);
         if (!rec) throw new Error(`Key not found in keyring: ${ctx.fingerprint}`);
-        await keyring.unlock();
+        try {
+          await keyring.unlock(pin);
+        } catch (e) {
+          if (e.pinRequired) {
+            // PIN fallback was enabled after page load — show form and retry
+            pinForm.style.display = 'block';
+            signBtn.textContent = 'Sign with PIN';
+            signBtn.disabled = false;
+            statusEl.innerHTML = '<span class="warn">Enter your signing PIN and try again.</span>';
+            pinInput.focus();
+            return;
+          }
+          throw e;
+        }
         const privateKey = await keyring.getPrivateKey(rec.id);
         const sig = await cryptoOps.sign(privateKey, new TextEncoder().encode(ctx.signedPayload));
         sendResponse({ type: 'SSD_SIGN_RESPONSE', requestId: ctx.requestId, signature: sig });
@@ -104,6 +136,7 @@
     }
 
     signBtn.addEventListener('click', doSign);
+    pinInput.addEventListener('keydown', e => { if (e.key === 'Enter') doSign(); });
     cancelLink.addEventListener('click', e => { e.preventDefault(); doCancel(); });
   </script>
 </body>
