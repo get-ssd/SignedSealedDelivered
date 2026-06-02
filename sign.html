@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SSD — Sign</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0a0a; --surface: #141414; --text: #e8e8e8; --text-muted: #666;
+      --border: #2a2a2a; --primary: #c8a96e; --primary-hover: #b8935a;
+      --success: #4caf77; --warning: #e8a020; --danger: #e05050;
+      --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      --radius: 6px;
+    }
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; padding: 28px 20px; }
+    h2 { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+    .banner { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 16px; }
+    .platform { color: var(--warning); font-size: 13px; min-height: 18px; }
+    .preview { font-family: var(--mono); font-size: 12px; background: var(--surface); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius); white-space: pre-wrap; word-break: break-word; max-height: 46vh; overflow-y: auto; margin-bottom: 16px; line-height: 1.65; }
+    .status { min-height: 20px; margin-bottom: 14px; font-size: 13px; }
+    .actions { display: flex; align-items: center; gap: 20px; }
+    button { background: var(--primary); color: #0a0a0a; border: none; padding: 14px 36px; border-radius: var(--radius); cursor: pointer; font-size: 15px; font-weight: 600; transition: background 0.15s; }
+    button:hover { background: var(--primary-hover); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    a { color: var(--text-muted); font-size: 12px; text-decoration: none; }
+    a:hover { color: var(--text); }
+    .ok   { color: var(--success); }
+    .fail { color: var(--danger); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="banner">
+    <h2>This is exactly what you are signing.</h2>
+    <p class="platform" id="platform"></p>
+  </div>
+  <pre id="preview" class="preview"></pre>
+  <div id="status" class="status"></div>
+  <div class="actions">
+    <button id="sign-btn">Sign</button>
+    <a href="#" id="cancel-link">Cancel</a>
+  </div>
+
+  <!-- globals must be defined before the shared modules load -->
+  <script>
+    const MOCK_MODE = false;
+    const MOCK_DB   = null;
+    const log = (...a) => console.log('[SSD sign]', ...a);
+  </script>
+  <script src="db.js"></script>
+  <script src="cryptoOps.js"></script>
+  <script src="passkey.js"></script>
+  <script src="keyring.js"></script>
+  <script>
+    'use strict';
+
+    const _sp = new URLSearchParams(location.search);
+    const ctx = {
+      requestId:     _sp.get('request_id')    || '',
+      extId:         _sp.get('ext_id')        || '',
+      fingerprint:   _sp.get('fingerprint')   || '',
+      signedPayload: _sp.get('signed_payload') || '',
+      platform:      _sp.get('platform')      || '',
+    };
+
+    const platEl    = document.getElementById('platform');
+    const previewEl = document.getElementById('preview');
+    const statusEl  = document.getElementById('status');
+    const signBtn   = document.getElementById('sign-btn');
+    const cancelLink = document.getElementById('cancel-link');
+
+    if (ctx.platform) platEl.textContent = `via ${ctx.platform}`;
+    previewEl.textContent = _sp.get('preview') || '(no preview provided)';
+
+    function sendResponse(msg) {
+      if (typeof chrome !== 'undefined' && chrome.runtime && ctx.extId) {
+        chrome.runtime.sendMessage(ctx.extId, msg);
+      }
+    }
+
+    async function doSign() {
+      signBtn.disabled = true;
+      statusEl.textContent = 'Confirm with your passkey…';
+      try {
+        const keys = await db.getAll('my_keys');
+        const rec  = keys.find(k => k.fingerprint === ctx.fingerprint);
+        if (!rec) throw new Error(`Key not found in keyring: ${ctx.fingerprint}`);
+        await keyring.unlock();
+        const privateKey = await keyring.getPrivateKey(rec.id);
+        const sig = await cryptoOps.sign(privateKey, new TextEncoder().encode(ctx.signedPayload));
+        sendResponse({ type: 'SSD_SIGN_RESPONSE', requestId: ctx.requestId, signature: sig });
+        statusEl.innerHTML = '<span class="ok">✓ Signed — you can close this window.</span>';
+        setTimeout(() => window.close(), 1500);
+      } catch (e) {
+        signBtn.disabled = false;
+        statusEl.innerHTML = `<span class="fail">Failed: ${e.message}</span>`;
+        log('sign error', e);
+      }
+    }
+
+    function doCancel() {
+      sendResponse({ type: 'SSD_SIGN_RESPONSE', requestId: ctx.requestId, error: 'cancelled' });
+      window.close();
+    }
+
+    signBtn.addEventListener('click', doSign);
+    cancelLink.addEventListener('click', e => { e.preventDefault(); doCancel(); });
+  </script>
+</body>
+</html>
