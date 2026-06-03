@@ -253,10 +253,10 @@
 
   <!-- SOCIAL SIGN -->
   <section id="socialSign" class="section">
-    <h2>Social Post</h2>
+    <h2 id="social-sign-heading">Social Post</h2>
     <div class="form-group">
       <label>Signing Key</label>
-      <select id="social-key-select"></select>
+      <select id="social-key-select" onchange="app.onSocialKeyChange()"></select>
     </div>
     <div class="form-group">
       <label>Identity hint</label>
@@ -267,35 +267,55 @@
       <label>Post text</label>
       <textarea id="social-text" placeholder="Write your post here…"></textarea>
     </div>
-    <button onclick="app.previewSocialSign()">Review →</button>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <button onclick="app.previewSocialSign()">Review →</button>
+      <button class="btn-secondary" onclick="app.saveSocialDraft()">Save &amp; close</button>
+    </div>
   </section>
 
   <!-- SOCIAL CONFIRM -->
   <section id="socialConfirm" class="section">
     <div class="confirm-banner">
       <h2>This is exactly what you are signing.</h2>
-      <p class="confirm-warning">The token will be appended when you post.</p>
+      <p style="font-size:13px;color:var(--text-muted)">The token will be appended when you post. You can come back to this from the Documents tab.</p>
     </div>
     <p id="social-confirm-blanks-note" class="warn" style="display:none">
       Multiple consecutive blank lines were collapsed to one — social platforms do not preserve them.
     </p>
     <pre id="social-confirm-render" class="render-preview"></pre>
-    <div class="confirm-actions">
-      <button class="btn-large" onclick="app.confirmSocialSign()">Sign</button>
-      <a href="#" class="cancel-link" onclick="ui.showSection('socialSign');return false;">Cancel</a>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <button class="btn-large" onclick="app.confirmSocialSign()">Sign →</button>
+      <button class="btn-secondary" onclick="app.saveSocialAtConfirm()">Save &amp; close</button>
+      <a href="#" class="cancel-link" onclick="ui.showSection('socialSign');return false;">← Edit</a>
     </div>
   </section>
 
   <!-- SOCIAL RESULT -->
   <section id="socialResult" class="section">
-    <h2>Ready to post</h2>
-    <p class="muted" style="margin-bottom:16px">Copy this and paste it into your post. The token at the end proves you signed it.</p>
+    <h2>Signed — ready to post</h2>
+    <p class="muted" style="margin-bottom:16px">Copy this and paste it into your post. Come back here any time from the Documents tab.</p>
     <pre id="social-result-text" class="render-preview" style="cursor:pointer" title="Click to copy" onclick="app.copySocialPost()"></pre>
+    <div id="social-copy-status" style="margin-top:8px;font-size:12px;min-height:16px"></div>
     <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
       <button onclick="app.copySocialPost()">Copy to clipboard</button>
+      <button class="btn-secondary" onclick="app.markSocialPosted()">Mark as posted</button>
       <a href="#" class="cancel-link" onclick="ui.showSection('docs');return false;">Done</a>
     </div>
-    <div id="social-copy-status" style="margin-top:8px;font-size:12px;min-height:16px"></div>
+  </section>
+
+  <!-- SOCIAL VERIFY -->
+  <section id="socialVerify" class="section">
+    <h2>Verify a post</h2>
+    <p class="muted" style="margin-bottom:16px">Paste any signed post — from email, WhatsApp, or anywhere — to check its signature.</p>
+    <div class="form-group">
+      <label>Post text (including the —SSD·…— token)</label>
+      <textarea id="social-verify-text" placeholder="Paste the full post here, including the token at the end…" style="min-height:180px"></textarea>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <button onclick="app.verifySocialPost()">Verify</button>
+      <a href="#" class="cancel-link" onclick="ui.showSection('docs');return false;">Cancel</a>
+    </div>
+    <div id="social-verify-result" style="margin-top:20px"></div>
   </section>
 
   <!-- DOCUMENTS -->
@@ -303,8 +323,9 @@
     <h2>Documents</h2>
     <div class="section-actions" style="margin-bottom:20px">
       <button onclick="app.newDocument()">New document</button>
-      <button class="btn-secondary" onclick="app.startSocialSign()">Social post</button>
-      <button class="btn-secondary" onclick="ui.showSection('verify')">Open a document</button>
+      <button class="btn-secondary" onclick="app.startSocialSign()">New post</button>
+      <button class="btn-secondary" onclick="ui.showSection('socialVerify')">Verify a post</button>
+      <button class="btn-secondary" onclick="ui.showSection('verify')">Open .ssd file</button>
     </div>
     <div id="docs-list"></div>
   </section>
@@ -836,7 +857,7 @@ const ui = {
   showSection(id) {
     const NAV_PARENT = {
       docs: 'documents', compose: 'documents', signConfirm: 'documents', seal: 'documents', deliver: 'documents', verify: 'documents',
-      socialSign: 'documents', socialConfirm: 'documents', socialResult: 'documents',
+      socialSign: 'documents', socialConfirm: 'documents', socialResult: 'documents', socialVerify: 'documents',
       contacts: 'contacts',
       keyring: 'me', newKey: 'me', settings: 'me',
     };
@@ -853,6 +874,7 @@ const ui = {
     if (id === 'compose')    app.loadComposeKeys();
     if (id === 'docs')       app.loadDocs();
     if (id === 'socialSign') app.loadSocialKeys();
+    if (id === 'socialVerify') { document.getElementById('social-verify-text').value = ''; document.getElementById('social-verify-result').innerHTML = ''; }
     if (id === 'seal')      app.loadSealRecipients();
     if (id === 'deliver')   app.loadDeliver();
     if (id === 'settings')  { app.checkPasskeyStatus(); app.checkEncryptionKeyStatus(); app.loadDevicesSection(); app.checkPinFallbackStatus(); }
@@ -1000,6 +1022,11 @@ const app = {
     log('fflate', typeof fflate);
     log('qrcode', typeof qrcode);
     log('jsQR', typeof jsQR);
+
+    // Track when user manually edits the identity hint, to suppress auto-fill
+    document.getElementById('social-identity').addEventListener('input', function() {
+      this.dataset.userEdited = 'true';
+    });
 
     ui.showSection('docs');
   },
@@ -1907,15 +1934,16 @@ const app = {
   async loadDocs() {
     const list = document.getElementById('docs-list');
     if (!list) return;
-    const [artifacts, drafts, myKeys] = await Promise.all([
-      db.getAll('artifacts'), db.getAll('drafts'), db.getAll('my_keys'),
+    const [artifacts, drafts, socialPosts, myKeys] = await Promise.all([
+      db.getAll('artifacts'), db.getAll('drafts'), db.getAll('social_posts'), db.getAll('my_keys'),
     ]);
     const keyMap = new Map(myKeys.map(k => [k.id, k]));
 
-    // Merge and sort newest first — drafts use 'updated', artifacts use 'created'
+    // Merge and sort newest first
     const items = [
       ...drafts.map(d => ({ ...d, _type: 'draft', _date: d.updated })),
       ...artifacts.map(a => ({ ...a, _type: 'artifact', _date: a.created })),
+      ...socialPosts.map(p => ({ ...p, _type: 'social', _date: p.updated || p.created })),
     ].sort((a, b) => b._date.localeCompare(a._date));
 
     if (!items.length) {
@@ -1929,7 +1957,34 @@ const app = {
       div.className = 'key-card';
       const date = new Date(item._date).toLocaleString();
 
-      if (item._type === 'draft') {
+      if (item._type === 'social') {
+        const stageBadge = {
+          draft:     '<span class="badge">Draft</span>',
+          signed:    '<span class="badge badge-primary">Signed</span>',
+          published: '<span class="badge" style="background:rgba(76,175,119,.15);color:var(--success);border-color:rgba(76,175,119,.4)">Posted</span>',
+        }[item.status] || '<span class="badge">Draft</span>';
+        const signerKey = keyMap.get(item.keyId);
+        const signerLabel = signerKey
+          ? `${signerKey.name} <span class="mono" style="font-size:11px">${item.fingerprint || signerKey.fingerprint}</span>`
+          : item.fingerprint ? `<span class="mono" style="font-size:11px">${item.fingerprint}</span>` : '';
+        const hintLabel = item.identity ? ` · ${item.identity}` : '';
+        const resumeStage = item.status === 'signed' || item.status === 'published' ? 'result' : item.canonical ? 'confirm' : 'write';
+        const resumeLabel = { write: 'Edit', confirm: 'Review', result: 'Copy' }[resumeStage];
+        div.innerHTML = `
+          <div class="key-card-header" style="align-items:flex-start">
+            <div class="key-card-meta" style="flex:1">
+              <div style="font-size:12px;color:var(--text-muted)">${date}${stageBadge}</div>
+              <div style="font-size:14px;font-weight:500;margin-top:4px">${item.summary || '—'}</div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:6px">Post${signerLabel ? ' · ' + signerLabel : ''}${hintLabel}</div>
+            </div>
+          </div>
+          <div class="key-card-actions">
+            <button onclick="app.startSocialSign('${item.id}','${resumeStage}')">${resumeLabel}</button>
+            ${item.status === 'signed' ? `<button class="btn-secondary" onclick="app.startSocialSign('${item.id}','write')">Re-edit</button>` : ''}
+            ${item.status === 'signed' ? `<button class="btn-secondary" onclick="app._markPostedFromList('${item.id}')">Mark posted</button>` : ''}
+            <button class="btn-secondary" style="color:var(--danger)" onclick="app.deleteSocialPost('${item.id}')">Delete</button>
+          </div>`;
+      } else if (item._type === 'draft') {
         div.innerHTML = `
           <div class="key-card-header" style="align-items:flex-start">
             <div class="key-card-meta" style="flex:1">
@@ -2608,20 +2663,109 @@ const app = {
 
   // ── Social signing ────────────────────────────────────────────────────────
 
-  async startSocialSign() {
-    await this.loadSocialKeys();
-    const saved = await db.get('settings', 'social_identity');
-    if (saved) document.getElementById('social-identity').value = saved.value;
-    document.getElementById('social-text').value = '';
-    ui.showSection('socialSign');
+  _socialPostId: null, // id of the social_posts record currently being edited
+
+  async startSocialSign(postId = null, stage = 'write') {
+    if (postId) {
+      const post = await db.get('social_posts', postId);
+      if (!post) { ui.showSection('docs'); return; }
+      this._socialPostId = postId;
+      await this.loadSocialKeys(post.keyId);
+      document.getElementById('social-identity').value = post.identity || '';
+      document.getElementById('social-text').value = post.text || '';
+      document.getElementById('social-sign-heading').textContent = 'Edit Post';
+      if (stage === 'confirm' && post.canonical) {
+        this._socialCtx = { keyId: post.keyId, canonical: post.canonical, identity: post.identity };
+        document.getElementById('social-confirm-blanks-note').style.display = 'none';
+        document.getElementById('social-confirm-render').textContent = post.canonical;
+        ui.showSection('socialConfirm');
+        return;
+      }
+      if (stage === 'result' && post.fullPost) {
+        this._socialCtx = { keyId: post.keyId, canonical: post.canonical, identity: post.identity };
+        this._socialResult = post.fullPost;
+        document.getElementById('social-result-text').textContent = post.fullPost;
+        document.getElementById('social-copy-status').textContent = '';
+        ui.showSection('socialResult');
+        return;
+      }
+      ui.showSection('socialSign');
+    } else {
+      this._socialPostId = null;
+      document.getElementById('social-sign-heading').textContent = 'New Post';
+      await this.loadSocialKeys();
+      document.getElementById('social-text').value = '';
+      ui.showSection('socialSign');
+    }
   },
 
-  async loadSocialKeys() {
+  async loadSocialKeys(selectKeyId = null) {
     const sel = document.getElementById('social-key-select');
     const keys = await db.getAll('my_keys');
     sel.innerHTML = keys.length
-      ? keys.map(k => `<option value="${k.id}"${k.is_default?' selected':''}>${k.name} [${k.fingerprint}]</option>`).join('')
+      ? keys.map(k => {
+          const selected = selectKeyId ? k.id === selectKeyId : k.is_default;
+          return `<option value="${k.id}"${selected ? ' selected' : ''}>${k.name} [${k.fingerprint}]</option>`;
+        }).join('')
       : '<option value="">— No keys —</option>';
+    await this.onSocialKeyChange(/* suppressIfUserEdited */ false);
+  },
+
+  async onSocialKeyChange(suppressIfUserEdited = true) {
+    const sel      = document.getElementById('social-key-select');
+    const hintEl   = document.getElementById('social-identity');
+    if (!sel.value) return;
+    // Only auto-fill if the field is empty or hasn't been manually edited
+    if (suppressIfUserEdited && hintEl.dataset.userEdited === 'true') return;
+    const rec = await db.get('my_keys', sel.value);
+    if (rec && rec.key_hint) {
+      hintEl.value = rec.key_hint;
+    } else {
+      // Fall back to the last-used identity hint for this key
+      const saved = await db.get('settings', `social_identity_${sel.value}`);
+      if (saved) hintEl.value = saved.value;
+      else {
+        const global = await db.get('settings', 'social_identity');
+        if (global && !hintEl.value) hintEl.value = global.value;
+      }
+    }
+    hintEl.dataset.userEdited = 'false';
+  },
+
+  async saveSocialDraft() {
+    const text     = document.getElementById('social-text').value;
+    const keyId    = document.getElementById('social-key-select').value;
+    const identity = document.getElementById('social-identity').value.trim();
+    const now = new Date().toISOString();
+    const id  = this._socialPostId || crypto.randomUUID();
+    const existing = this._socialPostId ? await db.get('social_posts', id) : null;
+    await db.put('social_posts', {
+      ...(existing || {}),
+      id, status: 'draft', keyId, identity, text,
+      canonical: null, token: null, fullPost: null,
+      summary: text.trim().slice(0, 80),
+      created: existing?.created || now, updated: now,
+    });
+    this._socialPostId = id;
+    ui.showSection('docs');
+  },
+
+  async saveSocialAtConfirm() {
+    if (!this._socialCtx) { ui.showSection('docs'); return; }
+    const { keyId, canonical, identity } = this._socialCtx;
+    const text = document.getElementById('social-text').value;
+    const now  = new Date().toISOString();
+    const id   = this._socialPostId || crypto.randomUUID();
+    const existing = this._socialPostId ? await db.get('social_posts', id) : null;
+    await db.put('social_posts', {
+      ...(existing || {}),
+      id, status: 'draft', keyId, identity, text, canonical,
+      token: null, fullPost: null,
+      summary: canonical.trim().slice(0, 80),
+      created: existing?.created || now, updated: now,
+    });
+    this._socialPostId = id;
+    ui.showSection('docs');
   },
 
   async previewSocialSign() {
@@ -2632,9 +2776,14 @@ const app = {
     if (!keyId)       { ui.display('<span class="warn">Please select a signing key.</span>'); return; }
     if (!identity)    { ui.display('<span class="warn">Please enter an identity hint.</span>'); return; }
 
-    // Social platforms don't preserve multiple consecutive blank lines —
-    // collapse \n\n\n+ to \n\n before CANON so what gets signed matches
-    // what the verifier extracts from the rendered post.
+    // Save hint against the key so it auto-fills next time
+    await db.put('settings', { key: `social_identity_${keyId}`, value: identity });
+    await db.put('settings', { key: 'social_identity', value: identity });
+    const rec = await db.get('my_keys', keyId);
+    if (rec && rec.key_hint !== identity) {
+      await db.put('my_keys', { ...rec, key_hint: identity });
+    }
+
     const normalised = text.replace(/\n{3,}/g, '\n\n');
     const blanksCollapsed = normalised !== text;
     const canonical = signer.canonicalise(normalised);
@@ -2654,20 +2803,30 @@ const app = {
       const rec = await db.get('my_keys', keyId);
       if (!rec) throw new Error('Key not found.');
 
-      // Minute-precision timestamp keeps the token compact
-      const timestamp  = new Date().toISOString().slice(0, 16) + 'Z';
+      const timestamp   = new Date().toISOString().slice(0, 16) + 'Z';
       const hashBuf     = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
       const contentHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,'0')).join('');
       const signedBytes = new TextEncoder().encode(`${rec.fingerprint}·${identity}·${contentHash}·${timestamp}`);
       const privateKey  = await keyring.getPrivateKey(keyId);
       const sig         = await cryptoOps.sign(privateKey, signedBytes);
 
-      await db.put('settings', { key: 'social_identity', value: identity });
-
       const hash8    = contentHash.slice(0, 8);
       const token    = `—SSD·${rec.fingerprint}·${identity}·${hash8}·${sig}·${timestamp}—`;
       const fullPost = canonical.trimEnd() + '\n\n' + token;
 
+      // Persist signed state
+      const now = new Date().toISOString();
+      const id  = this._socialPostId || crypto.randomUUID();
+      const existing = this._socialPostId ? await db.get('social_posts', id) : null;
+      const text = document.getElementById('social-text').value;
+      await db.put('social_posts', {
+        ...(existing || {}),
+        id, status: 'signed', keyId, fingerprint: rec.fingerprint,
+        identity, text, canonical, token, fullPost,
+        summary: canonical.trim().slice(0, 80),
+        created: existing?.created || now, updated: now,
+      });
+      this._socialPostId = id;
       this._socialResult = fullPost;
       document.getElementById('social-result-text').textContent = fullPost;
       document.getElementById('social-copy-status').textContent = '';
@@ -2689,6 +2848,92 @@ const app = {
     } catch {
       if (statusEl) { statusEl.textContent = 'Copy failed — select and copy manually.'; statusEl.className = 'fail'; }
     }
+  },
+
+  async markSocialPosted() {
+    if (this._socialPostId) {
+      const post = await db.get('social_posts', this._socialPostId);
+      if (post) await db.put('social_posts', { ...post, status: 'published', updated: new Date().toISOString() });
+    }
+    ui.showSection('docs');
+  },
+
+  async _markPostedFromList(id) {
+    const post = await db.get('social_posts', id);
+    if (post) await db.put('social_posts', { ...post, status: 'published', updated: new Date().toISOString() });
+    await this.loadDocs();
+  },
+
+  async deleteSocialPost(id) {
+    if (!confirm('Delete this post? It cannot be recovered.')) return;
+    await db.del('social_posts', id);
+    await this.loadDocs();
+  },
+
+  async verifySocialPost() {
+    const text = document.getElementById('social-verify-text').value;
+    const out  = document.getElementById('social-verify-result');
+    out.innerHTML = '';
+
+    const TOKEN_RE = /—SSD·([^·—]+)·([^·—]+)·([0-9a-f]{8})·([^·—]+)·([^—]+)—/;
+    const m = text.match(TOKEN_RE);
+    if (!m) {
+      out.innerHTML = '<div class="verify-result"><div class="fail">✗ No SSD token found in the pasted text.</div></div>';
+      return;
+    }
+
+    const [raw, fingerprint, keyHint, hash8, sig, timestamp] = m;
+    const preToken = text.slice(0, text.lastIndexOf(raw)).trim();
+    const canonical = signer.canonicalise(preToken);
+
+    const hashBuf     = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
+    const contentHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,'0')).join('');
+
+    let html = '<div class="verify-result">';
+
+    // Token parse
+    html += `<div class="info">Token found · Signer hint: <span class="mono">${keyHint}</span></div>`;
+    html += `<div class="info">Timestamp: ${timestamp}</div>`;
+
+    // Content hash check
+    if (contentHash.slice(0, 8) === hash8) {
+      html += '<div class="ok">✓ Content hash matches — post not modified</div>';
+    } else {
+      html += '<div class="fail">✗ Content hash mismatch — post may have been edited after signing</div>';
+      html += '</div>';
+      out.innerHTML = html;
+      return;
+    }
+
+    // Key lookup
+    const myKeys      = await db.getAll('my_keys');
+    const contactKeys = await db.getAll('contact_keys');
+    const signerRec   = [...myKeys, ...contactKeys].find(k => k.fingerprint === fingerprint);
+
+    if (!signerRec) {
+      html += `<div class="warn">⚠ Key <span class="mono">${fingerprint}</span> not in your keyring — cannot verify signature.</div>`;
+      html += `<div class="info" style="margin-top:8px;font-size:12px">Import their key card (via Contacts → Import key card) to verify this post.</div>`;
+      html += '</div>';
+      out.innerHTML = html;
+      return;
+    }
+
+    // Signature verification
+    const signedPayload = new TextEncoder().encode(`${fingerprint}·${keyHint}·${contentHash}·${timestamp}`);
+    try {
+      const pubKey = await cryptoOps.importPublicKeyB64(signerRec.public_key_b64);
+      const valid  = await cryptoOps.verify(pubKey, sig, signedPayload);
+      if (valid) {
+        html += `<div class="ok">✓ Signature valid — signed by <strong>${signerRec.name}</strong> <span class="mono" style="font-size:11px">${fingerprint}</span></div>`;
+      } else {
+        html += '<div class="fail">✗ Signature invalid — this post may have been tampered with.</div>';
+      }
+    } catch (e) {
+      html += `<div class="fail">✗ Verification error: ${e.message}</div>`;
+    }
+
+    html += '</div>';
+    out.innerHTML = html;
   },
 
   async retryWebAuthn() {

@@ -6,7 +6,7 @@ const db = {
   async init() {
     if (this._db) return this._db;
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(MOCK_MODE ? MOCK_DB : 'ssd-keyring', 5);
+      const req = indexedDB.open(MOCK_MODE ? MOCK_DB : 'ssd-keyring', 6);
       req.onupgradeneeded = e => {
         const idb = e.target.result;
         const tx  = e.target.transaction;
@@ -35,6 +35,10 @@ const db = {
 
         if (e.oldVersion < 5) {
           idb.createObjectStore('drafts', { keyPath: 'id' });
+        }
+
+        if (e.oldVersion < 6) {
+          idb.createObjectStore('social_posts', { keyPath: 'id' });
         }
 
         if (e.oldVersion < 2) {
