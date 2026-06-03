@@ -276,6 +276,9 @@
       <h2>This is exactly what you are signing.</h2>
       <p class="confirm-warning">The token will be appended when you post.</p>
     </div>
+    <p id="social-confirm-blanks-note" class="warn" style="display:none">
+      Multiple consecutive blank lines were collapsed to one — social platforms do not preserve them.
+    </p>
     <pre id="social-confirm-render" class="render-preview"></pre>
     <div class="confirm-actions">
       <button class="btn-large" onclick="app.confirmSocialSign()">Sign</button>
@@ -2629,8 +2632,14 @@ const app = {
     if (!keyId)       { ui.display('<span class="warn">Please select a signing key.</span>'); return; }
     if (!identity)    { ui.display('<span class="warn">Please enter an identity hint.</span>'); return; }
 
-    const canonical = signer.canonicalise(text);
+    // Social platforms don't preserve multiple consecutive blank lines —
+    // collapse \n\n\n+ to \n\n before CANON so what gets signed matches
+    // what the verifier extracts from the rendered post.
+    const normalised = text.replace(/\n{3,}/g, '\n\n');
+    const blanksCollapsed = normalised !== text;
+    const canonical = signer.canonicalise(normalised);
     this._socialCtx = { keyId, canonical, identity };
+    document.getElementById('social-confirm-blanks-note').style.display = blanksCollapsed ? '' : 'none';
     document.getElementById('social-confirm-render').textContent = canonical;
     ui.showSection('socialConfirm');
   },
