@@ -616,10 +616,10 @@ const signer = {
       return out.join('\n');
     }).join('\n');
   },
-  buildSignatureBlock(fingerprint, name, timestamp, sigField = '[see signature.json]') {
+  buildSignatureBlock(hash8, name, timestamp, sigField = '[see signature.json]') {
     return [
       '---',
-      `Signed by: ${name} [${fingerprint}]`,
+      `Signed by: ${name} [${hash8}]`,
       `Timestamp: ${timestamp}`,
       'Render spec: ssd-render-1.0',
       'I rendered this document using the above spec, confirmed the output, and signed it.',
@@ -748,7 +748,7 @@ const artifact = {
     const result = {
       signature_valid: false, content_unmodified: false,
       signed_at: signature.signed_at, render_spec: manifest.render_spec,
-      signer_fingerprint: signature.signer_fingerprint, signer_name: null,
+      signer_hash8: signature.signer_hash8, signer_name: null,
       signer_known: false, trust_types: [], key_expired: false, key_revoked: false,
       recheck_due: false, recheck_overdue: false, decryption_logged: false,
       errors: [], warnings: [],
@@ -765,10 +765,10 @@ const artifact = {
     // Verify signature
     const myKeys = await db.getAll('my_keys');
     const contactKeys = await db.getAll('contact_keys');
-    const signerRec = [...myKeys, ...contactKeys].find(k => k.fingerprint === signature.signer_fingerprint);
+    const signerRec = [...myKeys, ...contactKeys].find(k => k.hash8 === signature.signer_hash8);
 
     if (!signerRec) {
-      result.warnings.push(`Signer key ${signature.signer_fingerprint} not in keyring — cannot verify signature.`);
+      result.warnings.push(`Signer key ${signature.signer_hash8} not in keyring — cannot verify signature.`);
       return result;
     }
 
@@ -902,10 +902,10 @@ const ui = {
       const d = new Date(result.signed_at).toISOString().replace('T', ' ').slice(0, 16);
       h += `<div class="ok">✓ Signed: ${d} UTC &nbsp;[${result.render_spec}]</div>`;
     }
-    if (result.signer_fingerprint) {
+    if (result.signer_hash8) {
       const who = result.signer_known ? ` — ${result.signer_name} (${result.trust_types.join(', ')})` : ' (unknown)';
       const cls = result.signer_known ? 'info' : 'warn';
-      h += `<div class="${cls}">◎ Key: <span class="mono">${result.signer_fingerprint}</span>${who}</div>`;
+      h += `<div class="${cls}">◎ Key: <span class="mono">${result.signer_hash8}</span>${who}</div>`;
     }
     for (const w of result.warnings) h += `<div class="warn">⚠ ${w}</div>`;
     for (const e of result.errors)   h += `<div class="fail">✗ ${e}</div>`;
@@ -1065,7 +1065,7 @@ const app = {
         <img src="${imgSrc}" width="48" height="48" class="identicon" alt="">
         <div class="key-card-meta">
           <div class="key-name">${roleTag}${displayName}${badges}</div>
-          <div class="key-fp">${rec.fingerprint}</div>
+          <div class="key-fp">${rec.hash8}</div>
         </div>
       </div>
       <div class="key-card-actions">
@@ -1085,7 +1085,7 @@ const app = {
     const sel = document.getElementById('compose-key-select');
     const keys = await db.getAll('my_keys');
     sel.innerHTML = keys.length
-      ? keys.map(k => `<option value="${k.id}"${k.is_default?' selected':''}>${k.name} [${k.fingerprint}]</option>`).join('')
+      ? keys.map(k => `<option value="${k.id}"${k.is_default?' selected':''}>${k.name} [${k.hash8}]</option>`).join('')
       : '<option value="">— No keys —</option>';
   },
 
@@ -1126,7 +1126,7 @@ const app = {
     const canonical = signer.canonicalise(text);
     const wrapped   = signer.wrap(canonical);
     const timestamp = new Date().toISOString();
-    const block     = signer.buildSignatureBlock(rec.fingerprint, rec.name, timestamp);
+    const block     = signer.buildSignatureBlock(rec.hash8, rec.name, timestamp);
     const render    = signer.buildRender(wrapped, block);
 
     this._sigCtx = { keyId, wrapped, timestamp, render, rec };
@@ -1154,7 +1154,7 @@ const app = {
       const manifestObj = {
         version: '1.0', render_spec: 'ssd-render-1.0',
         signed_at: timestamp,
-        signer_fingerprint: rec.fingerprint, signer_name: rec.name,
+        signer_hash8: rec.hash8, signer_name: rec.name,
         files,
       };
       const manifestBytes = enc.encode(JSON.stringify(manifestObj, null, 2));
@@ -1163,11 +1163,11 @@ const app = {
 
       const manifestHash = 'sha256:' + await cryptoOps.sha256(manifestBytes);
       const signatureObj = {
-        algorithm: 'Ed25519', signer_fingerprint: rec.fingerprint,
+        algorithm: 'Ed25519', signer_hash8: rec.hash8,
         signed_at: timestamp, manifest_hash: manifestHash, signature,
       };
       const innerZip  = await artifact.pack(content, 'ssd-render-1.0', manifestObj, signatureObj);
-      const outerMeta = JSON.stringify({ ssd: 'sealed-enc-v1', signed_at: timestamp, signer_fingerprint: rec.fingerprint, manifest_hash: manifestHash });
+      const outerMeta = JSON.stringify({ ssd: 'sealed-enc-v1', signed_at: timestamp, signer_hash8: rec.hash8, manifest_hash: manifestHash });
       const outerSig  = await cryptoOps.sign(privateKey, enc.encode(outerMeta));
 
       this._sigCtx = { ...this._sigCtx, innerZip, outerSig, outerMeta, manifestHash };
@@ -1265,7 +1265,7 @@ const app = {
           const recipientPub = await cryptoOps.importX25519PublicKeyB64(r.pub);
           slots.push({ for_key: r.pub, ...await cryptoOps.wrapDEK(dekBytes, recipientPub) });
         }
-        const envelope = { ssd: 'sealed-enc-v1', signed_at: timestamp, signer_fingerprint: rec.fingerprint, manifest_hash: manifestHash, outer_sig: outerSig, recipients: slots, iv: dataIv, ct: dataCt };
+        const envelope = { ssd: 'sealed-enc-v1', signed_at: timestamp, signer_hash8: rec.hash8, manifest_hash: manifestHash, outer_sig: outerSig, recipients: slots, iv: dataIv, ct: dataCt };
         outputBytes = enc.encode(JSON.stringify(envelope));
       } else {
         outputBytes = innerZip;
@@ -1276,7 +1276,7 @@ const app = {
       await opfsStore.write(opfsPath, outputBytes);
       await db.put('artifacts', {
         id: artifactId, direction: 'sent', signed_by_key_id: keyId,
-        fingerprint: rec.fingerprint,
+        hash8: rec.hash8,
         artifact_hash: 'sha256:' + await cryptoOps.sha256(outputBytes),
         render_spec: 'ssd-render-1.0', created: timestamp,
         encrypted: isSealed, encrypted_for: encryptedFor, opfs_path: opfsPath,
@@ -1287,9 +1287,9 @@ const app = {
       this._sigCtx = null;
       this._deliverCtx = {
         outputBytes,
-        filename: `ssd-${rec.fingerprint}-${Date.now()}.ssd`,
+        filename: `ssd-${rec.hash8}-${Date.now()}.ssd`,
         keyName: rec.name,
-        fingerprint: rec.fingerprint,
+        hash8: rec.hash8,
         isSealed,
         sealedForCount: encryptedFor.length,
       };
@@ -1311,7 +1311,7 @@ const app = {
         ? `Sealed for ${ctx.sealedForCount} recipient${ctx.sealedForCount !== 1 ? 's' : ''}`
         : 'Open — readable by anyone who has your public key';
       el.innerHTML = `
-        <div style="font-size:13px;color:var(--text-muted)">Signed by <strong>${ctx.keyName}</strong> <span class="mono" style="font-size:11px">${ctx.fingerprint}</span></div>
+        <div style="font-size:13px;color:var(--text-muted)">Signed by <strong>${ctx.keyName}</strong> <span class="mono" style="font-size:11px">${ctx.hash8}</span></div>
         <div style="font-size:13px;color:var(--text-muted);margin-top:6px">${sealNote}</div>`;
     }
     const shareBtn = document.getElementById('deliver-share-btn');
@@ -1348,9 +1348,9 @@ const app = {
       const outputBytes = await opfsStore.read(a.opfs_path);
       this._deliverCtx = {
         outputBytes,
-        filename: `ssd-${a.fingerprint}-${Date.now()}.ssd`,
-        keyName: sigKey?.name || a.fingerprint,
-        fingerprint: a.fingerprint,
+        filename: `ssd-${a.hash8}-${Date.now()}.ssd`,
+        keyName: sigKey?.name || a.hash8,
+        hash8: a.hash8,
         isSealed: a.encrypted,
         sealedForCount: a.encrypted_for?.length || 0,
       };
@@ -1397,7 +1397,7 @@ const app = {
 
       const privateKey = await keyring.getPrivateKey(a.signed_by_key_id);
       const enc = new TextEncoder();
-      const outerMeta = JSON.stringify({ ssd: 'sealed-enc-v1', signed_at: a.created, signer_fingerprint: a.fingerprint, manifest_hash: manifestHash });
+      const outerMeta = JSON.stringify({ ssd: 'sealed-enc-v1', signed_at: a.created, signer_hash8: a.hash8, manifest_hash: manifestHash });
       const outerSig  = await cryptoOps.sign(privateKey, enc.encode(outerMeta));
       const rec = await db.get('my_keys', a.signed_by_key_id);
       this._sigCtx = { keyId: a.signed_by_key_id, wrapped: a.summary || '', timestamp: a.created, render: null, rec, innerZip, outerSig, outerMeta, manifestHash };
@@ -1469,16 +1469,16 @@ const app = {
       const privateKey  = await keyring.getPrivateKey(signerRec.id);
       const manifestObj = {
         version: '1.0', render_spec: 'ssd-key-transfer-1.0',
-        signed_at: timestamp, signer_fingerprint: signerRec.fingerprint, signer_name: signerRec.name,
+        signed_at: timestamp, signer_hash8: signerRec.hash8, signer_name: signerRec.name,
         files: fileHashes,
       };
       const manifestBytes = enc.encode(JSON.stringify(manifestObj, null, 2));
       const signature     = await cryptoOps.sign(privateKey, manifestBytes);
       const manifestHash  = 'sha256:' + await cryptoOps.sha256(manifestBytes);
-      const signatureObj  = { algorithm: 'Ed25519', signer_fingerprint: signerRec.fingerprint, signed_at: timestamp, manifest_hash: manifestHash, signature };
+      const signatureObj  = { algorithm: 'Ed25519', signer_hash8: signerRec.hash8, signed_at: timestamp, manifest_hash: manifestHash, signature };
       const innerZip      = await artifact.pack(content, 'ssd-key-transfer-1.0', manifestObj, signatureObj);
 
-      const outerMeta = JSON.stringify({ ssd: 'sealed-enc-v1', signed_at: timestamp, signer_fingerprint: signerRec.fingerprint, manifest_hash: manifestHash });
+      const outerMeta = JSON.stringify({ ssd: 'sealed-enc-v1', signed_at: timestamp, signer_hash8: signerRec.hash8, manifest_hash: manifestHash });
       const outerSig  = await cryptoOps.sign(privateKey, enc.encode(outerMeta));
 
       const dekBytes     = window.crypto.getRandomValues(new Uint8Array(32));
@@ -1486,7 +1486,7 @@ const app = {
       const { iv_b64: dataIv, ct_b64: dataCt } = await cryptoOps.encryptBytes(innerZip, dekKey);
       const recipientPub = await cryptoOps.importX25519PublicKeyB64(contact.encryption_key_pub);
       const slot         = { for_key: contact.encryption_key_pub, ...await cryptoOps.wrapDEK(dekBytes, recipientPub) };
-      const envelope     = { ssd: 'sealed-enc-v1', signed_at: timestamp, signer_fingerprint: signerRec.fingerprint, manifest_hash: manifestHash, outer_sig: outerSig, recipients: [slot], iv: dataIv, ct: dataCt };
+      const envelope     = { ssd: 'sealed-enc-v1', signed_at: timestamp, signer_hash8: signerRec.hash8, manifest_hash: manifestHash, outer_sig: outerSig, recipients: [slot], iv: dataIv, ct: dataCt };
       const outputBytes  = enc.encode(JSON.stringify(envelope));
 
       const artifactId = window.crypto.randomUUID();
@@ -1494,7 +1494,7 @@ const app = {
       await opfsStore.write(opfsPath, outputBytes);
       await db.put('artifacts', {
         id: artifactId, direction: 'sent', signed_by_key_id: signerRec.id,
-        fingerprint: signerRec.fingerprint,
+        hash8: signerRec.hash8,
         artifact_hash: 'sha256:' + await cryptoOps.sha256(outputBytes),
         render_spec: 'ssd-key-transfer-1.0', created: timestamp,
         encrypted: true, encrypted_for: [contactId], opfs_path: opfsPath,
@@ -1505,7 +1505,7 @@ const app = {
       this._deliverCtx = {
         outputBytes, isSealed: true, sealedForCount: 1,
         filename: `key-transfer-${Date.now()}.ssd`,
-        keyName: signerRec.name, fingerprint: signerRec.fingerprint,
+        keyName: signerRec.name, hash8: signerRec.hash8,
       };
       ui.clear();
       ui.showSection('deliver');
@@ -1553,19 +1553,19 @@ const app = {
         log('dec-1: envelope detected, recipients:', envelope.recipients?.length);
 
         // Verify outer signature (no decryption needed)
-        if (envelope.outer_sig && envelope.signer_fingerprint) {
-          log('dec-2: verifying outer sig for', envelope.signer_fingerprint);
-          const outerMeta = JSON.stringify({ ssd: 'sealed-enc-v1', signed_at: envelope.signed_at, signer_fingerprint: envelope.signer_fingerprint, manifest_hash: envelope.manifest_hash });
+        if (envelope.outer_sig && envelope.signer_hash8) {
+          log('dec-2: verifying outer sig for', envelope.signer_hash8);
+          const outerMeta = JSON.stringify({ ssd: 'sealed-enc-v1', signed_at: envelope.signed_at, signer_hash8: envelope.signer_hash8, manifest_hash: envelope.manifest_hash });
           const allKeys = [...await db.getAll('my_keys'), ...await db.getAll('contact_keys')];
-          const signerKey = allKeys.find(k => k.fingerprint === envelope.signer_fingerprint);
+          const signerKey = allKeys.find(k => k.hash8 === envelope.signer_hash8);
           if (signerKey) {
             const pubKey = await cryptoOps.importPublicKeyB64(signerKey.public_key_b64);
             log('dec-3: pubkey imported');
             const valid  = await cryptoOps.verify(pubKey, envelope.outer_sig, new TextEncoder().encode(outerMeta));
             log('dec-4: outer sig valid:', valid);
-            outerSigStatus = valid ? { ok: true, name: signerKey.name, fp: signerKey.fingerprint } : { ok: false };
+            outerSigStatus = valid ? { ok: true, name: signerKey.name, fp: signerKey.hash8 } : { ok: false };
           } else {
-            outerSigStatus = { ok: null, fp: envelope.signer_fingerprint };
+            outerSigStatus = { ok: null, fp: envelope.signer_hash8 };
           }
         }
 
@@ -1610,9 +1610,9 @@ const app = {
 
       if (result.render_spec === 'ssd-key-transfer-1.0') {
         const contactKeys   = await db.getAll('contact_keys');
-        const outerFp       = envelope?.signer_fingerprint;
-        const innerFp       = result.signer_fingerprint;
-        const signerContact = contactKeys.find(k => k.fingerprint === innerFp && !k.is_quarantined);
+        const outerFp       = envelope?.signer_hash8;
+        const innerFp       = result.signer_hash8;
+        const signerContact = contactKeys.find(k => k.hash8 === innerFp && !k.is_quarantined);
         const reasons = [];
         if (outerSigStatus?.ok !== true)   reasons.push('outer envelope signature missing or invalid');
         if (!signerContact)                reasons.push('signer is not a trusted contact on this device');
@@ -1655,7 +1655,7 @@ const app = {
       const rec = await keyring.createKey(name);
       document.getElementById('new-key-name').value = '';
       ui.clear();
-      ui.display(`<div class="ok">✓ Key created: <strong>${rec.name}</strong> [<span class="mono">${rec.fingerprint}</span>]</div>`);
+      ui.display(`<div class="ok">✓ Key created: <strong>${rec.name}</strong> [<span class="mono">${rec.hash8}</span>]</div>`);
       ui.showSection('keyring');
     } catch (e) {
       ui.clear();
@@ -1697,13 +1697,13 @@ const app = {
       const json = JSON.stringify(card, null, 2);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
-      a.download = `ssd-key-${card.fingerprint}.json`;
+      a.download = `ssd-key-${card.hash8}.json`;
       a.click();
       URL.revokeObjectURL(a.href);
 
       ui.clear();
       ui.display(`<div class="ok">✓ Key card exported and self-signature verified.</div>
-        <div>${card.name} [<span class="mono">${card.fingerprint}</span>]</div>
+        <div>${card.name} [<span class="mono">${card.hash8}</span>]</div>
         <div style="margin-top:10px;font-size:12px;color:var(--text-muted)">Click below to copy JSON:</div>`);
       const pre = document.createElement('pre');
       pre.className = 'key-card-json';
@@ -1721,7 +1721,7 @@ const app = {
   async copyProfileKeyDeclaration(keyId) {
     const rec = await db.get('my_keys', keyId);
     if (!rec) { ui.display('<span class="fail">Key not found.</span>'); return; }
-    const token = `—SSD·${rec.fingerprint}·${rec.public_key_b64}—`;
+    const token = `—SSD·${rec.hash8}·${rec.public_key_b64}—`;
     try {
       await navigator.clipboard.writeText(token);
       ui.display(`<div class="ok">✓ Profile key copied — paste into your Facebook bio.</div>
@@ -1890,7 +1890,7 @@ const app = {
     const current     = allKeys.find(k => k.is_current);
     const retiredCount = allKeys.filter(k => !k.is_current).length;
     if (current) {
-      const fp = await cryptoOps.fingerprint(current.pub);
+      const fp = await cryptoOps.hash8(current.pub);
       el.innerHTML = `<span class="ok">✓ Encryption key active</span> · <span class="mono" style="font-size:11px">${fp}</span>`;
       if (genUI)   genUI.style.display   = 'none';
       if (resetUI) resetUI.style.display = '';
@@ -1971,8 +1971,8 @@ const app = {
         }[item.status] || '<span class="badge">Draft</span>';
         const signerKey = keyMap.get(item.keyId);
         const signerLabel = signerKey
-          ? `${signerKey.name} <span class="mono" style="font-size:11px">${item.fingerprint || signerKey.fingerprint}</span>`
-          : item.fingerprint ? `<span class="mono" style="font-size:11px">${item.fingerprint}</span>` : '';
+          ? `${signerKey.name} <span class="mono" style="font-size:11px">${item.hash8 || signerKey.hash8}</span>`
+          : item.hash8 ? `<span class="mono" style="font-size:11px">${item.hash8}</span>` : '';
         const hintLabel = item.identity ? ` · ${item.identity}` : '';
         const resumeStage = item.status === 'signed' || item.status === 'published' ? 'result' : item.canonical ? 'confirm' : 'write';
         const resumeLabel = { write: 'Edit', confirm: 'Review', result: 'Copy' }[resumeStage];
@@ -2006,8 +2006,8 @@ const app = {
       } else {
         const sigKey = keyMap.get(item.signed_by_key_id);
         const sigLabel = sigKey
-          ? `${sigKey.name} <span class="mono" style="font-size:11px">${item.fingerprint}</span>`
-          : `<span class="mono" style="font-size:11px">${item.fingerprint}</span>`;
+          ? `${sigKey.name} <span class="mono" style="font-size:11px">${item.hash8}</span>`
+          : `<span class="mono" style="font-size:11px">${item.hash8}</span>`;
         const sealBadge = item.encrypted
           ? `<span class="badge badge-primary" style="margin-left:6px;cursor:pointer" onclick="app.showSealedRecipients('${item.id}')">Sealed ▾</span>`
           : '<span class="badge" style="margin-left:6px">Open</span>';
@@ -2136,7 +2136,7 @@ const app = {
            <button class="btn-secondary" onclick="app.deleteContact('${k.id}')">Remove</button>`;
       return `<div class="key-entry${quarantined ? ' quarantined' : ''}">
         <div class="key-entry-header">
-          <div><div class="key-entry-name">${k.name}</div><div class="key-entry-fp">${k.fingerprint}</div></div>
+          <div><div class="key-entry-name">${k.name}</div><div class="key-entry-fp">${k.hash8}</div></div>
         </div>
         <div class="key-entry-meta">${via}${when ? ' · ' + when : ''}${qLabel}</div>
         <div class="key-entry-actions">${actions}</div>
@@ -2175,15 +2175,15 @@ const app = {
     if (!card.public_key || !card.name) {
       ui.display('<span class="fail">Invalid key card — missing required fields.</span>'); return;
     }
-    if (!card.fingerprint) {
-      card.fingerprint = await cryptoOps.fingerprint(card.public_key);
+    if (!card.hash8) {
+      card.hash8 = await cryptoOps.hash8(card.public_key);
     }
     if (card.self_signed) {
       const normalized = {
         chain:                 card.chain                 ?? [],
         encryption_key:        card.encryption_key        ?? null,
         expires:               card.expires               ?? null,
-        fingerprint:           card.fingerprint,
+        hash8:                 card.hash8,
         identicon_algorithm:   card.identicon_algorithm   ?? 'ssd-identicon-1.0',
         issued:                card.issued,
         name:                  card.name,
@@ -2199,17 +2199,17 @@ const app = {
       if (!valid) {
         ui.display('<span class="fail">Key card signature is invalid — this may have been tampered with.</span>'); return;
       }
-      const fp = await cryptoOps.fingerprint(card.public_key);
-      if (fp !== card.fingerprint) {
+      const fp = await cryptoOps.hash8(card.public_key);
+      if (fp !== card.hash8) {
         ui.display('<span class="fail">Fingerprint does not match the public key — corrupt key card.</span>'); return;
       }
     }
-    const existing = (await db.getAll('contact_keys')).find(c => c.fingerprint === card.fingerprint);
+    const existing = (await db.getAll('contact_keys')).find(c => c.hash8 === card.hash8);
     if (existing) {
-      ui.display(`<span class="warn">Already have a key with fingerprint ${card.fingerprint}.</span>`); return;
+      ui.display(`<span class="warn">Already have a key with hash8 ${card.hash8}.</span>`); return;
     }
     const myKeys = await db.getAll('my_keys');
-    if (myKeys.find(k => k.fingerprint === card.fingerprint)) {
+    if (myKeys.find(k => k.hash8 === card.hash8)) {
       ui.display('<span class="warn">This is one of your own keys.</span>'); return;
     }
     this.hidePasteImport();
@@ -2263,7 +2263,7 @@ const app = {
   async _saveContactKey(card, receivedVia, personId) {
     await db.put('contact_keys', {
       id: window.crypto.randomUUID(), person_id: personId,
-      name: card.name, fingerprint: card.fingerprint,
+      name: card.name, hash8: card.hash8,
       public_key_b64: card.public_key,
       identicon_algorithm: card.identicon_algorithm || 'ssd-identicon-1.0',
       self_image_b64: card.self_image || null, received_via: receivedVia,
@@ -2284,7 +2284,7 @@ const app = {
     const person = await db.get('contacts', personId);
     this._pendingImport = null;
     document.getElementById('person-picker').style.display = 'none';
-    ui.display(`<div class="ok">✓ Added: <strong>${card.name}</strong> [<span class="mono">${card.fingerprint}</span>] under <strong>${person.local_name}</strong></div>`);
+    ui.display(`<div class="ok">✓ Added: <strong>${card.name}</strong> [<span class="mono">${card.hash8}</span>] under <strong>${person.local_name}</strong></div>`);
     await this.loadContacts();
   },
 
@@ -2297,7 +2297,7 @@ const app = {
 
       const qrPayload = JSON.stringify({ ssd: 'qr1', n: card.name, k: card.public_key, ...(card.encryption_key ? { ek: card.encryption_key } : {}), ...(deviceName ? { dn: deviceName } : {}) });
       log('QR payload bytes:', qrPayload.length);
-      await this._showQRModal('Your key card', `Share this so contacts can verify your identity. Fingerprint: ${card.fingerprint}`, qrPayload, null);
+      await this._showQRModal('Your key card', `Share this so contacts can verify your identity. Fingerprint: ${card.hash8}`, qrPayload, null);
     } catch(e) {
       ui.display(`<span class="fail">Could not generate QR: ${e.message}</span>`);
       console.error(e);
@@ -2307,7 +2307,7 @@ const app = {
   async showContactKeyQR(contactId) {
     const rec = await db.get('contact_keys', contactId);
     if (!rec) return;
-    const payload = JSON.stringify({ fingerprint: rec.fingerprint, name: rec.name, public_key: rec.public_key_b64, encryption_key: rec.encryption_key_b64 || null });
+    const payload = JSON.stringify({ hash8: rec.hash8, name: rec.name, public_key: rec.public_key_b64, encryption_key: rec.encryption_key_b64 || null });
     await this._showQRModal(
       `Verify: ${rec.name}`,
       `Show this to ${rec.name} and ask if it matches their key. If they say no, tap "That's not my key".`,
@@ -2407,7 +2407,7 @@ const app = {
   async promptQuarantine(contactId) {
     const rec = await db.get('contact_keys', contactId);
     if (!rec) return;
-    if (!confirm(`Move ${rec.name} [${rec.fingerprint}] to quarantine?\n\nThis key will no longer be trusted. The record is kept so you can trace where it came from.`)) return;
+    if (!confirm(`Move ${rec.name} [${rec.hash8}] to quarantine?\n\nThis key will no longer be trusted. The record is kept so you can trace where it came from.`)) return;
     await this.quarantineContact(contactId, 'verification failed — key not recognised by owner');
   },
 
@@ -2416,7 +2416,7 @@ const app = {
     if (!rec) return;
     await db.put('contact_keys', { ...rec, is_quarantined: true, quarantined_at: new Date().toISOString(), quarantine_reason: reason });
     const artifacts = await db.getAll('artifacts');
-    const affected = artifacts.filter(a => a.signed_by_key_id === contactId || a.fingerprint === rec.fingerprint);
+    const affected = artifacts.filter(a => a.signed_by_key_id === contactId || a.hash8 === rec.hash8);
     ui.clear();
     let msg = `<div class="ok">Key moved to quarantine.</div>`;
     if (affected.length > 0) {
@@ -2435,10 +2435,10 @@ const app = {
     const rec = await db.get('contact_keys', contactId);
     if (!rec) return;
     const artifacts = await db.getAll('artifacts');
-    const affected = artifacts.filter(a => a.signed_by_key_id === contactId || a.fingerprint === rec.fingerprint);
+    const affected = artifacts.filter(a => a.signed_by_key_id === contactId || a.hash8 === rec.hash8);
     ui.clear();
     let msg = `<div class="verify-result">`;
-    msg += `<div><strong>${rec.name}</strong> · <span class="mono">${rec.fingerprint}</span></div>`;
+    msg += `<div><strong>${rec.name}</strong> · <span class="mono">${rec.hash8}</span></div>`;
     msg += `<div class="fail" style="margin-top:6px">⚠ ${rec.quarantine_reason || 'Flagged as suspect'}</div>`;
     msg += `<div style="margin-top:10px"><strong>How this key reached you</strong></div>`;
     const via = { qr_scan: 'QR scan', paste: 'Paste', file: 'File import' }[rec.received_via] || rec.received_via || 'Unknown';
@@ -2458,7 +2458,7 @@ const app = {
     if (!rec) return;
     const person = rec.person_id ? await db.get('contacts', rec.person_id) : null;
     const label = person ? `${person.local_name} — ${rec.name}` : rec.name;
-    if (!confirm(`Permanently delete ${label} [${rec.fingerprint}]? This cannot be undone.`)) return;
+    if (!confirm(`Permanently delete ${label} [${rec.hash8}]? This cannot be undone.`)) return;
     await db.del('contact_keys', contactId);
     // Remove the person record if this was their only key
     if (rec.person_id) {
@@ -2732,7 +2732,7 @@ const app = {
     sel.innerHTML = keys.length
       ? keys.map(k => {
           const selected = selectKeyId ? k.id === selectKeyId : k.is_default;
-          return `<option value="${k.id}"${selected ? ' selected' : ''}>${k.name} [${k.fingerprint}]</option>`;
+          return `<option value="${k.id}"${selected ? ' selected' : ''}>${k.name} [${k.hash8}]</option>`;
         }).join('')
       : '<option value="">— No keys —</option>';
     await this.onSocialKeyChange(/* suppressIfUserEdited */ false);
@@ -2745,8 +2745,8 @@ const app = {
     // Only auto-fill if the field is empty or hasn't been manually edited
     if (suppressIfUserEdited && hintEl.dataset.userEdited === 'true') return;
     const rec = await db.get('my_keys', sel.value);
-    if (rec && rec.key_hint) {
-      hintEl.value = rec.key_hint;
+    if (rec && rec.identity) {
+      hintEl.value = rec.identity;
     } else {
       // Fall back to the last-used identity hint for this key
       const saved = await db.get('settings', `social_identity_${sel.value}`);
@@ -2807,8 +2807,8 @@ const app = {
     await db.put('settings', { key: `social_identity_${keyId}`, value: identity });
     await db.put('settings', { key: 'social_identity', value: identity });
     const rec = await db.get('my_keys', keyId);
-    if (rec && rec.key_hint !== identity) {
-      await db.put('my_keys', { ...rec, key_hint: identity });
+    if (rec && rec.identity !== identity) {
+      await db.put('my_keys', { ...rec, identity });
     }
 
     const normalised = text.replace(/\n{3,}/g, '\n\n');
@@ -2833,12 +2833,12 @@ const app = {
       const timestamp   = new Date().toISOString().slice(0, 16) + 'Z';
       const hashBuf     = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
       const contentHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,'0')).join('');
-      const signedBytes = new TextEncoder().encode(`${rec.fingerprint}·${identity}·${contentHash}·${timestamp}`);
+      const signedBytes = new TextEncoder().encode(`${rec.hash8}·${identity}·${contentHash}·${timestamp}`);
       const privateKey  = await keyring.getPrivateKey(keyId);
       const sig         = await cryptoOps.sign(privateKey, signedBytes);
 
-      const hash8    = contentHash.slice(0, 8);
-      const token    = `—SSD·${rec.fingerprint}·${identity}·${hash8}·${sig}·${timestamp}—`;
+      const content8 = contentHash.slice(0, 8);
+      const token    = `—SSD·${rec.hash8}·${identity}·${content8}·${sig}·${timestamp}—`;
       const fullPost = canonical.trimEnd() + '\n\n' + token;
 
       // Persist signed state
@@ -2848,7 +2848,7 @@ const app = {
       const text = document.getElementById('social-text').value;
       await db.put('social_posts', {
         ...(existing || {}),
-        id, status: 'signed', keyId, fingerprint: rec.fingerprint,
+        id, status: 'signed', keyId, hash8: rec.hash8,
         identity, text, canonical, token, fullPost,
         summary: canonical.trim().slice(0, 80),
         created: existing?.created || now, updated: now,
@@ -2922,7 +2922,7 @@ const app = {
       return;
     }
 
-    const [raw, fingerprint, keyHint, hash8, sig, timestamp] = m;
+    const [raw, hash8, identity, content8, sig, timestamp] = m;
     const preToken = text.slice(0, text.lastIndexOf(raw)).trim();
     const canonical = signer.canonicalise(preToken);
 
@@ -2932,11 +2932,11 @@ const app = {
     let html = '<div class="verify-result">';
 
     // Token parse
-    html += `<div class="info">Token found · Signer hint: <span class="mono">${keyHint}</span></div>`;
+    html += `<div class="info">Token found · Signer hint: <span class="mono">${identity}</span></div>`;
     html += `<div class="info">Timestamp: ${timestamp}</div>`;
 
     // Content hash check
-    if (contentHash.slice(0, 8) === hash8) {
+    if (contentHash.slice(0, 8) === content8) {
       html += '<div class="ok">✓ Content hash matches — post not modified</div>';
     } else {
       html += '<div class="fail">✗ Content hash mismatch — post may have been edited after signing</div>';
@@ -2948,10 +2948,10 @@ const app = {
     // Key lookup
     const myKeys      = await db.getAll('my_keys');
     const contactKeys = await db.getAll('contact_keys');
-    const signerRec   = [...myKeys, ...contactKeys].find(k => k.fingerprint === fingerprint);
+    const signerRec   = [...myKeys, ...contactKeys].find(k => k.hash8 === hash8);
 
     if (!signerRec) {
-      html += `<div class="warn">⚠ Key <span class="mono">${fingerprint}</span> not in your keyring — cannot verify signature.</div>`;
+      html += `<div class="warn">⚠ Key <span class="mono">${hash8}</span> not in your keyring — cannot verify signature.</div>`;
       html += `<div class="info" style="margin-top:8px;font-size:12px">Import their key card (via Contacts → Import key card) to verify this post.</div>`;
       html += '</div>';
       out.innerHTML = html;
@@ -2959,12 +2959,12 @@ const app = {
     }
 
     // Signature verification
-    const signedPayload = new TextEncoder().encode(`${fingerprint}·${keyHint}·${contentHash}·${timestamp}`);
+    const signedPayload = new TextEncoder().encode(`${hash8}·${identity}·${contentHash}·${timestamp}`);
     try {
       const pubKey = await cryptoOps.importPublicKeyB64(signerRec.public_key_b64);
       const valid  = await cryptoOps.verify(pubKey, sig, signedPayload);
       if (valid) {
-        html += `<div class="ok">✓ Signature valid — signed by <strong>${signerRec.name}</strong> <span class="mono" style="font-size:11px">${fingerprint}</span></div>`;
+        html += `<div class="ok">✓ Signature valid — signed by <strong>${signerRec.name}</strong> <span class="mono" style="font-size:11px">${hash8}</span></div>`;
       } else {
         html += '<div class="fail">✗ Signature invalid — this post may have been tampered with.</div>';
       }

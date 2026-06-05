@@ -93,12 +93,12 @@ const keyring = {
     const pubB64 = await cryptoOps.exportPublicKeyB64(publicKey);
     const privB64 = await cryptoOps.exportPrivateKeyB64(privateKey);
     const { ciphertext_b64, iv_b64 } = await cryptoOps.encryptPrivateKey(privB64, this._sessionKey);
-    const fingerprint = await cryptoOps.fingerprint(pubB64);
+    const hash8 = await cryptoOps.hash8(pubB64);
     const existing = await db.getAll('my_keys');
     // Ensure global encryption key exists (generates it if this is the first key)
     await this.ensureEncryptionKey();
     const record = {
-      id: window.crypto.randomUUID(), name, fingerprint,
+      id: window.crypto.randomUUID(), name, hash8,
       public_key_b64: pubB64,
       private_key_encrypted: ciphertext_b64,
       private_key_iv: iv_b64,
@@ -130,13 +130,13 @@ const keyring = {
 
   async importKey(name, pubB64, privB64) {
     if (!this._sessionKey) throw new Error('Keyring locked — authenticate first.');
-    const fingerprint = await cryptoOps.fingerprint(pubB64);
+    const hash8 = await cryptoOps.hash8(pubB64);
     const existing = await db.getAll('my_keys');
-    if (existing.some(k => k.fingerprint === fingerprint))
-      throw new Error(`Key ${fingerprint} is already in your keyring.`);
+    if (existing.some(k => k.hash8 === hash8))
+      throw new Error(`Key ${hash8} is already in your keyring.`);
     const { ciphertext_b64, iv_b64 } = await cryptoOps.encryptPrivateKey(privB64, this._sessionKey);
     const record = {
-      id: window.crypto.randomUUID(), name, fingerprint,
+      id: window.crypto.randomUUID(), name, hash8,
       public_key_b64: pubB64,
       private_key_encrypted: ciphertext_b64, private_key_iv: iv_b64,
       identicon_algorithm: 'ssd-identicon-1.0', self_image_b64: null,
@@ -156,7 +156,7 @@ const keyring = {
       chain: [],
       encryption_key: encKeySetting ? encKeySetting.value : null,
       expires: rec.expires,
-      fingerprint: rec.fingerprint,
+      hash8: rec.hash8,
       identicon_algorithm: rec.identicon_algorithm,
       issued: rec.created,
       name: rec.name,

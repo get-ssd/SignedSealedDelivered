@@ -33,7 +33,7 @@ const cryptoOps = {
   async sha256B64(dataBytes) {
     return this.b64enc(await window.crypto.subtle.digest('SHA-256', dataBytes));
   },
-  async fingerprint(publicKeyB64) {
+  async hash8(publicKeyB64) {
     const raw = this.b64dec(publicKeyB64);
     const hex = await this.sha256(raw);
     return hex.slice(0, 8).toUpperCase();
