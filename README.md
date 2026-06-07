@@ -143,3 +143,7 @@ All cryptography uses the native WebCrypto API. Storage is IndexedDB (metadata) 
 - Safari 17+
 
 Ed25519 and WebAuthn PRF are required for full functionality.
+
+## Licence
+
+[AGPL-3.0-or-later](LICENSE) -- free to use, modify, and distribute. If you run this as a network service, you must make the source available to users.
