@@ -45,12 +45,12 @@ const cryptoOps = {
     return this.b64enc(await window.crypto.subtle.digest('SHA-256', dataBytes));
   },
   async hash8(publicKeyB64) {
-    const raw = this.b64dec(publicKeyB64);
+    const raw = this.b64urldec(publicKeyB64);
     const hex = await this.sha256(raw);
     return hex.slice(0, 8).toUpperCase();
   },
   async identiconSeed(publicKeyB64) {
-    const raw = this.b64dec(publicKeyB64);
+    const raw = this.b64urldec(publicKeyB64);
     const h = await window.crypto.subtle.digest('SHA-256', raw);
     return new Uint8Array(h);
   },
@@ -125,7 +125,7 @@ const cryptoOps = {
     return this.decryptBytes(slot.iv, slot.ek, transportKey);
   },
   async verificationCode(pubKeyB64) {
-    const hex = await this.sha256(this.b64dec(pubKeyB64));
+    const hex = await this.sha256(this.b64urldec(pubKeyB64));
     return String(parseInt(hex.slice(0, 8), 16) % 1000000).padStart(6, '0');
   },
 };
