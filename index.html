@@ -2919,7 +2919,7 @@ const app = {
     const out  = document.getElementById('social-verify-result');
     out.innerHTML = '';
 
-    const TOKEN_RE = /\[SSD:([^\]:]+):([^\]:]+):([0-9a-f]{8}):([^\]:]+):([^\]]+)\]/;
+    const TOKEN_RE = /\[SSD:([0-9A-Fa-f]{8}):(.+?):([0-9a-f]{8}):([A-Za-z0-9_-]+):(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z)\]/;
     const m = text.match(TOKEN_RE);
     if (!m) {
       out.innerHTML = '<div class="verify-result"><div class="fail">✗ No SSD token found in the pasted text.</div></div>';
