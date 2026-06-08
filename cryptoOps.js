@@ -1,30 +1,41 @@
 'use strict';
 // ─── CRYPTO OPS ──────────────────────────────────────────────────────────────
 const cryptoOps = {
+  // b64enc/b64dec: standard base64, used for internal storage (AES-GCM, private keys).
   b64enc: buf => btoa(String.fromCharCode(...(buf instanceof Uint8Array ? buf : new Uint8Array(buf)))),
   b64dec: b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0)),
+  // b64urlenc/b64urldec: base64url no-pad (RFC 4648 §5), used for all protocol wire fields.
+  b64urlenc: buf => {
+    const b64 = btoa(String.fromCharCode(...(buf instanceof Uint8Array ? buf : new Uint8Array(buf))));
+    return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  },
+  b64urldec: s => {
+    s = s.replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
+    return Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  },
 
   async generateKeypair() {
     return window.crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
   },
   async exportPublicKeyB64(key) {
-    return this.b64enc(await window.crypto.subtle.exportKey('raw', key));
+    return this.b64urlenc(await window.crypto.subtle.exportKey('raw', key));
   },
   async exportPrivateKeyB64(key) {
     return this.b64enc(await window.crypto.subtle.exportKey('pkcs8', key));
   },
   async importPublicKeyB64(b64) {
-    return window.crypto.subtle.importKey('raw', this.b64dec(b64), { name: 'Ed25519' }, true, ['verify']);
+    return window.crypto.subtle.importKey('raw', this.b64urldec(b64), { name: 'Ed25519' }, true, ['verify']);
   },
   async importPrivateKeyB64(b64) {
     return window.crypto.subtle.importKey('pkcs8', this.b64dec(b64), { name: 'Ed25519' }, true, ['sign']);
   },
   async sign(privateKey, dataBytes) {
     const sig = await window.crypto.subtle.sign({ name: 'Ed25519' }, privateKey, dataBytes);
-    return this.b64enc(sig);
+    return this.b64urlenc(sig);
   },
   async verify(publicKey, signatureB64, dataBytes) {
-    return window.crypto.subtle.verify({ name: 'Ed25519' }, publicKey, this.b64dec(signatureB64), dataBytes);
+    return window.crypto.subtle.verify({ name: 'Ed25519' }, publicKey, this.b64urldec(signatureB64), dataBytes);
   },
   async sha256(dataBytes) {
     const h = await window.crypto.subtle.digest('SHA-256', dataBytes);

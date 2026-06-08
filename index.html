@@ -314,7 +314,7 @@
     <h2>Verify a post</h2>
     <p class="muted" style="margin-bottom:16px">Paste any signed post — from email, WhatsApp, or anywhere — to check its signature.</p>
     <div class="form-group">
-      <label>Post text (including the —SSD·…— token)</label>
+      <label>Post text (including the [SSD:…] token)</label>
       <textarea id="social-verify-text" placeholder="Paste the full post here, including the token at the end…" style="min-height:180px"></textarea>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
@@ -595,7 +595,10 @@ const opfsStore = {
 // ─── SIGNER ──────────────────────────────────────────────────────────────────
 const signer = {
   canonicalise(rawText) {
-    let t = rawText.normalize('NFC').replace(/\r\n|\r/g, '\n');
+    let t = rawText;
+    const lastTok = t.lastIndexOf('[SSD:');
+    if (lastTok !== -1) t = t.slice(0, lastTok);
+    t = t.normalize('NFC').replace(/\r\n|\r/g, '\n');
     t = t.split('\n').map(l => l.trimEnd()).join('\n');
     t = t.replace(/^\n+/, '').replace(/\n+$/, '');
     t = this.wrap(t);
@@ -1164,6 +1167,7 @@ const app = {
       const manifestHash = 'sha256:' + await cryptoOps.sha256(manifestBytes);
       const signatureObj = {
         algorithm: 'Ed25519', signer_hash8: rec.hash8,
+        capacity: ['ssd:author'],
         signed_at: timestamp, manifest_hash: manifestHash, signature,
       };
       const innerZip  = await artifact.pack(content, 'ssd-render-1.0', manifestObj, signatureObj);
@@ -1475,7 +1479,7 @@ const app = {
       const manifestBytes = enc.encode(JSON.stringify(manifestObj, null, 2));
       const signature     = await cryptoOps.sign(privateKey, manifestBytes);
       const manifestHash  = 'sha256:' + await cryptoOps.sha256(manifestBytes);
-      const signatureObj  = { algorithm: 'Ed25519', signer_hash8: signerRec.hash8, signed_at: timestamp, manifest_hash: manifestHash, signature };
+      const signatureObj  = { algorithm: 'Ed25519', signer_hash8: signerRec.hash8, capacity: ['ssd:author'], signed_at: timestamp, manifest_hash: manifestHash, signature };
       const innerZip      = await artifact.pack(content, 'ssd-key-transfer-1.0', manifestObj, signatureObj);
 
       const outerMeta = JSON.stringify({ ssd: 'sealed-enc-v1', signed_at: timestamp, signer_hash8: signerRec.hash8, manifest_hash: manifestHash });
@@ -1721,7 +1725,7 @@ const app = {
   async copyProfileKeyDeclaration(keyId) {
     const rec = await db.get('my_keys', keyId);
     if (!rec) { ui.display('<span class="fail">Key not found.</span>'); return; }
-    const token = `—SSD·${rec.hash8}·${rec.public_key_b64}—`;
+    const token = `[SSD:${rec.hash8}:${rec.public_key_b64}]`;
     try {
       await navigator.clipboard.writeText(token);
       ui.display(`<div class="ok">✓ Profile key copied — paste into your Facebook bio.</div>
@@ -2833,12 +2837,12 @@ const app = {
       const timestamp   = new Date().toISOString().slice(0, 16) + 'Z';
       const hashBuf     = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
       const contentHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,'0')).join('');
-      const signedBytes = new TextEncoder().encode(`${rec.hash8}·${identity}·${contentHash}·${timestamp}`);
+      const signedBytes = new TextEncoder().encode(`${rec.hash8}:${identity}:${contentHash}:${timestamp}`);
       const privateKey  = await keyring.getPrivateKey(keyId);
       const sig         = await cryptoOps.sign(privateKey, signedBytes);
 
       const content8 = contentHash.slice(0, 8);
-      const token    = `—SSD·${rec.hash8}·${identity}·${content8}·${sig}·${timestamp}—`;
+      const token    = `[SSD:${rec.hash8}:${identity}:${content8}:${sig}:${timestamp}]`;
       const fullPost = canonical.trimEnd() + '\n\n' + token;
 
       // Persist signed state
@@ -2915,7 +2919,7 @@ const app = {
     const out  = document.getElementById('social-verify-result');
     out.innerHTML = '';
 
-    const TOKEN_RE = /—SSD·([^·—]+)·([^·—]+)·([0-9a-f]{8})·([^·—]+)·([^—]+)—/;
+    const TOKEN_RE = /\[SSD:([^\]:]+):([^\]:]+):([0-9a-f]{8}):([^\]:]+):([^\]]+)\]/;
     const m = text.match(TOKEN_RE);
     if (!m) {
       out.innerHTML = '<div class="verify-result"><div class="fail">✗ No SSD token found in the pasted text.</div></div>';
@@ -2959,7 +2963,7 @@ const app = {
     }
 
     // Signature verification
-    const signedPayload = new TextEncoder().encode(`${hash8}·${identity}·${contentHash}·${timestamp}`);
+    const signedPayload = new TextEncoder().encode(`${hash8}:${identity}:${contentHash}:${timestamp}`);
     try {
       const pubKey = await cryptoOps.importPublicKeyB64(signerRec.public_key_b64);
       const valid  = await cryptoOps.verify(pubKey, sig, signedPayload);
