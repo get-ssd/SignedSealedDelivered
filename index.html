@@ -993,7 +993,7 @@ const app = {
 
   async init() {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./service-worker.js').catch(console.warn);
+      navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' }).catch(console.warn);
     }
 
     if (MOCK_MODE) {
