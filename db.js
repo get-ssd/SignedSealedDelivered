@@ -6,7 +6,7 @@ const db = {
   async init() {
     if (this._db) return this._db;
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(MOCK_MODE ? MOCK_DB : 'ssd-keyring', 6);
+      const req = indexedDB.open(MOCK_MODE ? MOCK_DB : 'ssd-keyring', 7);
       req.onupgradeneeded = e => {
         const idb = e.target.result;
         const tx  = e.target.transaction;
@@ -39,6 +39,21 @@ const db = {
 
         if (e.oldVersion < 6) {
           idb.createObjectStore('social_posts', { keyPath: 'id' });
+        }
+
+        if (e.oldVersion < 7) {
+          // Rename fingerprint → hash8 in my_keys and contact_keys (pre-v51 records).
+          for (const storeName of ['my_keys', 'contact_keys']) {
+            tx.objectStore(storeName).openCursor().onsuccess = function(ev) {
+              const cursor = ev.target.result;
+              if (!cursor) return;
+              const rec = cursor.value;
+              if (rec.fingerprint !== undefined && rec.hash8 === undefined) {
+                cursor.update({ ...rec, hash8: rec.fingerprint, fingerprint: undefined });
+              }
+              cursor.continue();
+            };
+          }
         }
 
         if (e.oldVersion < 2) {
