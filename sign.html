@@ -61,25 +61,37 @@
     'use strict';
 
     const _sp = new URLSearchParams(location.search);
+
+    // Detect entry shape: bookmarklet raw-text path vs extension pre-built path.
+    const _action = _sp.get('action') || '';
+    const _isRawText = (_action === 'sign' && _sp.has('text'));
+
     const ctx = {
-      requestId:     _sp.get('request_id')    || '',
-      extId:         _sp.get('ext_id')        || '',
-      fingerprint:   _sp.get('fingerprint')   || '',
+      requestId:     _sp.get('request_id')     || '',
+      extId:         _sp.get('ext_id')         || '',
+      fingerprint:   _sp.get('fingerprint')    || '',
       signedPayload: _sp.get('signed_payload') || '',
-      platform:      _sp.get('platform')      || '',
+      platform:      _sp.get('platform')       || '',
+      rawText:       _sp.get('text')           || '',
+      context:       _sp.get('context')        || '',
     };
 
-    const platEl    = document.getElementById('platform');
-    const previewEl = document.getElementById('preview');
-    const statusEl  = document.getElementById('status');
-    const signBtn   = document.getElementById('sign-btn');
+    const platEl     = document.getElementById('platform');
+    const previewEl  = document.getElementById('preview');
+    const statusEl   = document.getElementById('status');
+    const signBtn    = document.getElementById('sign-btn');
     const cancelLink = document.getElementById('cancel-link');
+    const pinForm    = document.getElementById('pin-form');
+    const pinInput   = document.getElementById('pin-input');
 
     if (ctx.platform) platEl.textContent = `via ${ctx.platform}`;
-    previewEl.textContent = _sp.get('preview') || '(no preview provided)';
 
-    const pinForm  = document.getElementById('pin-form');
-    const pinInput = document.getElementById('pin-input');
+    if (_isRawText) {
+      previewEl.textContent = ctx.rawText || '(no text provided)';
+      cancelLink.style.display = 'none';
+    } else {
+      previewEl.textContent = _sp.get('preview') || '(no preview provided)';
+    }
 
     // Show PIN form if pin fallback is active
     db.get('settings', 'pin_fallback_enabled').then(s => {
@@ -90,11 +102,74 @@
       }
     }).catch(() => {});
 
-    function sendResponse(msg) {
+    // Send response back to the extension (extension pre-built path only).
+    function sendExtResponse(msg) {
       if (typeof chrome !== 'undefined' && chrome.runtime && ctx.extId) {
         chrome.runtime.sendMessage(ctx.extId, msg);
       }
     }
+
+    // ── Inline CANON-1..9 for the raw-text path ──────────────────────────────
+    // (mirrors core/canon.js exactly — kept inline so sign.html has no extra deps)
+
+    function _wrap(text) {
+      const W = 80;
+      return text.split('\n').map(line => {
+        if (line.length <= W) return line;
+        const words = line.split(' ');
+        const out = [];
+        let cur = '';
+        for (const word of words) {
+          if (cur === '') {
+            cur = word;
+          } else if ((cur + ' ' + word).length <= W) {
+            cur += ' ' + word;
+          } else {
+            out.push(cur);
+            cur = word;
+          }
+        }
+        if (cur !== '') out.push(cur);
+        return out.join('\n');
+      }).join('\n');
+    }
+
+    async function _canonicalise(rawText) {
+      let text = String(rawText ?? '');
+      const lastTokenIdx = text.lastIndexOf('[SSD:');
+      if (lastTokenIdx !== -1) text = text.slice(0, lastTokenIdx);
+      text = text.normalize('NFC');
+      text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      text = text.split('\n').map(l => l.replace(/[ \t]+$/, '')).join('\n');
+      text = text.replace(/^\n+/, '');
+      text = text.replace(/\n+$/, '');
+      text = _wrap(text);
+      text = text + '\n';
+      const bytes = new TextEncoder().encode(text);
+      const digest = await crypto.subtle.digest('SHA-256', bytes);
+      const contentHash = Array.from(new Uint8Array(digest))
+        .map(b => b.toString(16).padStart(2, '0')).join('');
+      return { canonicalText: text, contentHash };
+    }
+
+    // ── Display token (raw-text path result) ─────────────────────────────────
+
+    function _showToken(token) {
+      previewEl.textContent = token;
+      statusEl.innerHTML = '<span class="ok">✓ Signed — copy the token above and paste it into your post.</span>';
+      const copyBtn = document.createElement('button');
+      copyBtn.textContent = 'Copy token';
+      copyBtn.style.marginTop = '12px';
+      copyBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(token).then(() => {
+          copyBtn.textContent = 'Copied!';
+          setTimeout(() => { copyBtn.textContent = 'Copy token'; }, 2000);
+        });
+      });
+      document.querySelector('.actions').replaceChildren(copyBtn);
+    }
+
+    // ── doSign: handles both entry shapes ────────────────────────────────────
 
     async function doSign() {
       signBtn.disabled = true;
@@ -102,27 +177,57 @@
       statusEl.textContent = 'Signing…';
       try {
         const keys = await db.getAll('my_keys');
-        const rec  = keys.find(k => k.fingerprint === ctx.fingerprint);
-        if (!rec) throw new Error(`Key not found in keyring: ${ctx.fingerprint}`);
-        try {
-          await keyring.unlock(pin);
-        } catch (e) {
-          if (e.pinRequired) {
-            // PIN fallback was enabled after page load — show form and retry
-            pinForm.style.display = 'block';
-            signBtn.textContent = 'Sign with PIN';
-            signBtn.disabled = false;
-            statusEl.innerHTML = '<span class="warn">Enter your signing PIN and try again.</span>';
-            pinInput.focus();
-            return;
+
+        if (_isRawText) {
+          // Raw-text path: canonicalise first (no auth needed), then unlock once and sign.
+          const rec = keys.find(k => k.is_default) || keys[0];
+          if (!rec) throw new Error('No signing key found — set one up in the SSD app first.');
+          const { contentHash } = await _canonicalise(ctx.rawText);
+          const identity  = `fp:${rec.hash8}`;
+          const timestamp = new Date().toISOString().slice(0, 16) + 'Z';
+          const payload   = `${rec.hash8}:${identity}:${contentHash}:${timestamp}`;
+          try {
+            await keyring.unlock(pin);
+          } catch (e) {
+            if (e.pinRequired) {
+              pinForm.style.display = 'block';
+              signBtn.textContent = 'Sign with PIN';
+              signBtn.disabled = false;
+              statusEl.innerHTML = '<span class="warn">Enter your signing PIN and try again.</span>';
+              pinInput.focus();
+              return;
+            }
+            throw e;
           }
-          throw e;
+          const privateKey = await keyring.getPrivateKey(rec.id);
+          const sig        = await cryptoOps.sign(privateKey, new TextEncoder().encode(payload));
+          const content8   = contentHash.slice(0, 8);
+          const token      = `[SSD:${rec.hash8}:${identity}:${content8}:${sig}:${timestamp}]`;
+          _showToken(token);
+
+        } else {
+          // Extension pre-built path: fingerprint param identifies which key to use.
+          const rec = keys.find(k => k.hash8 === ctx.fingerprint);
+          if (!rec) throw new Error(`Key not found in keyring: ${ctx.fingerprint}`);
+          try {
+            await keyring.unlock(pin);
+          } catch (e) {
+            if (e.pinRequired) {
+              pinForm.style.display = 'block';
+              signBtn.textContent = 'Sign with PIN';
+              signBtn.disabled = false;
+              statusEl.innerHTML = '<span class="warn">Enter your signing PIN and try again.</span>';
+              pinInput.focus();
+              return;
+            }
+            throw e;
+          }
+          const privateKey = await keyring.getPrivateKey(rec.id);
+          const sig = await cryptoOps.sign(privateKey, new TextEncoder().encode(ctx.signedPayload));
+          sendExtResponse({ type: 'SSD_SIGN_RESPONSE', requestId: ctx.requestId, signature: sig });
+          statusEl.innerHTML = '<span class="ok">✓ Signed — you can close this window.</span>';
+          setTimeout(() => window.close(), 1500);
         }
-        const privateKey = await keyring.getPrivateKey(rec.id);
-        const sig = await cryptoOps.sign(privateKey, new TextEncoder().encode(ctx.signedPayload));
-        sendResponse({ type: 'SSD_SIGN_RESPONSE', requestId: ctx.requestId, signature: sig });
-        statusEl.innerHTML = '<span class="ok">✓ Signed — you can close this window.</span>';
-        setTimeout(() => window.close(), 1500);
       } catch (e) {
         signBtn.disabled = false;
         statusEl.innerHTML = `<span class="fail">Failed: ${e.message}</span>`;
@@ -131,7 +236,7 @@
     }
 
     function doCancel() {
-      sendResponse({ type: 'SSD_SIGN_RESPONSE', requestId: ctx.requestId, error: 'cancelled' });
+      sendExtResponse({ type: 'SSD_SIGN_RESPONSE', requestId: ctx.requestId, error: 'cancelled' });
       window.close();
     }
 
