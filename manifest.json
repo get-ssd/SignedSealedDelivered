@@ -18,13 +18,12 @@
     }
   ],
   "share_target": {
-    "action": "./index.html",
-    "method": "POST",
-    "enctype": "multipart/form-data",
+    "action": "./sign.html",
+    "method": "GET",
     "params": {
-      "files": [
-        { "name": "artifact", "accept": ["application/x-ssd", ".ssd"] }
-      ]
+      "text": "text",
+      "title": "title",
+      "url": "url"
     }
   }
 }

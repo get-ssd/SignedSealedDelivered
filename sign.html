@@ -62,9 +62,13 @@
 
     const _sp = new URLSearchParams(location.search);
 
-    // Detect entry shape: bookmarklet raw-text path vs extension pre-built path.
+    // Detect entry shape:
+    //   - extension pre-built: has signed_payload
+    //   - bookmarklet: action=sign&text=...
+    //   - share target: text=... (no action, no signed_payload)
     const _action = _sp.get('action') || '';
-    const _isRawText = (_action === 'sign' && _sp.has('text'));
+    const _isRawText = _sp.has('text') && !_sp.has('signed_payload');
+    const _isShare = _isRawText && !_action;
 
     const ctx = {
       requestId:     _sp.get('request_id')     || '',
@@ -84,7 +88,8 @@
     const pinForm    = document.getElementById('pin-form');
     const pinInput   = document.getElementById('pin-input');
 
-    if (ctx.platform) platEl.textContent = `via ${ctx.platform}`;
+    if (_isShare) platEl.textContent = 'shared text — copy the token, then tap Back to return to your app';
+    else if (ctx.platform) platEl.textContent = `via ${ctx.platform}`;
 
     if (_isRawText) {
       previewEl.textContent = ctx.rawText || '(no text provided)';
