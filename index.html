@@ -529,7 +529,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v56';
+const APP_VERSION = 'ssd-v57';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD]', ...a);
@@ -1037,7 +1037,29 @@ const app = {
       this.dataset.userEdited = 'true';
     });
 
-    ui.showSection('docs');
+    // Handle Web Share Target (?text= / ?title= from share_target in manifest)
+    const _sp = new URLSearchParams(location.search);
+    const _shareText = _sp.get('text') || _sp.get('title') || '';
+    if (_shareText) {
+      if (/\[SSD:[^\]]+\]/.test(_shareText)) {
+        ui.showSection('socialVerify');
+        document.getElementById('social-verify-text').value = _shareText;
+      } else {
+        document.getElementById('social-text').value = _shareText;
+        document.getElementById('social-sign-heading').textContent = 'New Post';
+        this._socialPostId = null;
+        await this.loadSocialKeys();
+        const hintEl = document.getElementById('social-identity');
+        if (!hintEl.value) {
+          const allKeys = await db.getAll('my_keys');
+          const defKey = allKeys.find(k => k.is_default) || allKeys[0];
+          if (defKey) hintEl.value = `fp:${defKey.hash8}`;
+        }
+        ui.showSection('socialSign');
+      }
+    } else {
+      ui.showSection('docs');
+    }
   },
 
   async loadKeyring() {

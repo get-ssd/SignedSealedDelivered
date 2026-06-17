@@ -18,7 +18,7 @@
     }
   ],
   "share_target": {
-    "action": "./post.html",
+    "action": "./index.html",
     "method": "GET",
     "params": {
       "text": "text",
