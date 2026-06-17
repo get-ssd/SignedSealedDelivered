@@ -529,7 +529,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v55';
+const APP_VERSION = 'ssd-v56';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD]', ...a);
@@ -1771,7 +1771,14 @@ const app = {
         await db.del('settings', 'prf_supported');
         ui.display('<div class="fail">Passkey not registered — it doesn\'t support secure key storage. Use a phone (Chrome on Android or Safari on iOS 18+) or a FIDO2 hardware key.</div>');
       } else {
-        ui.display('<div class="ok">✓ Passkey registered.</div>');
+        ui.display('<div class="ok">✓ Passkey registered. Creating device key…</div>');
+        try {
+          const deviceRec = await keyring.createKey('D:Device Key');
+          ui.display(`<div class="ok">✓ Passkey registered. Device key created automatically (${deviceRec.hash8}).</div>`);
+        } catch (ke) {
+          ui.display('<div class="ok">✓ Passkey registered.</div><div class="warn">Device key creation failed — create one manually in Keys.</div>');
+          console.error('Auto device key failed:', ke);
+        }
       }
       await this.checkPasskeyStatus();
     } catch (e) {

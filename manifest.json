@@ -18,7 +18,7 @@
     }
   ],
   "share_target": {
-    "action": "./sign.html",
+    "action": "./post.html",
     "method": "GET",
     "params": {
       "text": "text",
