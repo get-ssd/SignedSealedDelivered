@@ -5,7 +5,8 @@ Cryptographic document signing and verification that runs entirely in the browse
 Part of the SSD ecosystem:
 - **Signed, Sealed, Delivered** (this repo) — the signing tool. Author-side: key management, signing, sealing, verification.
 - **ssd-tick** — browser extension for readers. Detects and verifies SSD-signed content on social media.
-- **ssd-vault** — publishing hub (planned). One signed artifact, many platform renditions.
+- **ssd-render-service** — render service. Accepts `.ssd` bundles, returns PDF/A-2b.
+- **ssd-vault** — browser app for browsing and managing `.ssd` artifact collections. Early stage.
 
 ## Current State
 
