@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install SSD Sign</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, system-ui, sans-serif; background: #f0f2f5; color: #222; padding: 20px; }
+h1 { font-size: 1.25em; margin-bottom: 4px; }
+.sub { font-size: 0.88em; color: #666; margin-bottom: 20px; }
+.card { background: #fff; border-radius: 12px; padding: 18px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+h2 { font-size: 0.78em; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #888; margin-bottom: 12px; }
+.bm-link { display: block; background: #1877f2; color: #fff; text-decoration: none; border-radius: 10px; padding: 16px 20px; font-size: 1.1em; font-weight: 700; text-align: center; }
+.bm-link:active { background: #1461c8; }
+.hint { font-size: 0.83em; color: #666; margin-top: 10px; line-height: 1.5; }
+ol { padding-left: 20px; }
+li { font-size: 0.92em; line-height: 1.55; color: #333; margin-bottom: 8px; }
+strong { color: #111; }
+</style>
+</head>
+<body>
+
+<h1>SSD Sign — Bookmarklet</h1>
+<p class="sub">Tap while composing to sign your text without an extension.</p>
+
+<div class="card">
+  <h2>Install</h2>
+  <a id="bm-link" class="bm-link" href="#">SSD Sign</a>
+  <p class="hint"><strong>Long-press</strong> the button above → tap <strong>Add bookmark</strong>. Name it <em>SSD Sign</em> and save. Done.</p>
+</div>
+
+<div class="card">
+  <h2>How to use</h2>
+  <ol>
+    <li>Compose your post. <strong>Tap the text field</strong> to keep it focused.</li>
+    <li>Open <strong>Bookmarks → SSD Sign</strong>.</li>
+    <li>The sign page opens with your text. Tap <strong>Sign</strong>.</li>
+    <li>Tap <strong>Copy token</strong>, then paste it back into your post.</li>
+  </ol>
+</div>
+
+<script>
+// Set href from script so quoting is natural — no HTML-entity escaping needed.
+document.getElementById('bm-link').href = (function () {
+  var PWA = 'https://idltd.github.io/SignedSealedDelivered';
+  var fn = function () {
+    var PWA_URL = 'https://idltd.github.io/SignedSealedDelivered';
+    function isEditable(e) {
+      if (!e) return false;
+      if (e.isContentEditable) return true;
+      var t = e.tagName;
+      if (t === 'TEXTAREA') return true;
+      if (t === 'INPUT') { var tp = (e.type || '').toLowerCase(); return !tp || tp === 'text' || tp === 'search' || tp === 'email' || tp === 'url'; }
+      return false;
+    }
+    function getText(e) {
+      if (!e) return '';
+      return e.tagName === 'TEXTAREA' || e.tagName === 'INPUT' ? e.value : (e.innerText || e.textContent || '');
+    }
+    function showErr(msg) {
+      var d = document.createElement('div');
+      d.setAttribute('style', 'position:fixed;top:0;left:0;right:0;background:#c00;color:#fff;padding:14px 16px;font:600 15px/1.4 system-ui;z-index:2147483647;');
+      d.textContent = msg;
+      document.body.appendChild(d);
+      setTimeout(function () { d.remove(); }, 4000);
+    }
+    var text = '';
+    var active = document.activeElement;
+    if (isEditable(active)) {
+      text = getText(active);
+    } else {
+      var cands = Array.from(document.querySelectorAll(
+        'textarea,[contenteditable="true"],[contenteditable=""],input[type="text"],input:not([type])'
+      )).filter(function (e) { return getText(e).trim().length > 0; });
+      if (cands.length > 0) {
+        cands.sort(function (a, b) { return getText(b).length - getText(a).length; });
+        text = getText(cands[0]);
+      }
+    }
+    text = text.replace(/\s*\[SSD:[^\]]+\]\s*$/, '').trim();
+    if (!text) {
+      showErr('SSD Sign: no text found — tap your compose field first, then use the bookmark.');
+      return;
+    }
+    location.href = PWA_URL + '/sign.html?action=sign&context=bookmarklet&text=' + encodeURIComponent(text);
+  };
+  return 'javascript:(' + fn.toString() + ')()';
+})();
+</script>
+</body>
+</html>
