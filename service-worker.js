@@ -1,5 +1,5 @@
 // Must match APP_VERSION in index.html
-const CACHE_NAME = 'ssd-v57';
+const CACHE_NAME = 'ssd-v58';
 const SHELL = [
   './',
   './index.html',

@@ -529,7 +529,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v57';
+const APP_VERSION = 'ssd-v58';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD]', ...a);
@@ -1058,7 +1058,23 @@ const app = {
         ui.showSection('socialSign');
       }
     } else {
-      ui.showSection('docs');
+      const _ssdParam = _sp.get('ssd');
+      if (_ssdParam) {
+        history.replaceState({}, document.title, window.location.pathname);
+        ui.showSection('verify');
+        try {
+          const base64 = _ssdParam.replace(/-/g, '+').replace(/_/g, '/')
+            + '=='.slice(0, (4 - _ssdParam.length % 4) % 4);
+          const bin = atob(base64);
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          await this.verifyArtifact(new Blob([bytes]));
+        } catch(e) {
+          ui.display(`<span class="fail">Could not open .ssd from URL: ${e.message}</span>`);
+        }
+      } else {
+        ui.showSection('docs');
+      }
     }
   },
 
