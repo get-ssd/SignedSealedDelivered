@@ -529,7 +529,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v59';
+const APP_VERSION = 'ssd-v60';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD]', ...a);
@@ -619,11 +619,12 @@ const signer = {
       return out.join('\n');
     }).join('\n');
   },
-  buildSignatureBlock(hash8, name, timestamp, sigField = '[see signature.json]') {
+  buildSignatureBlock(hash8, name, timestamp, capacity = ['ssd:author'], sigField = '[see signature.json]') {
     return [
       '---',
       `Signed by: ${name} [${hash8}]`,
       `Timestamp: ${timestamp}`,
+      `Capacity: ${capacity.join(', ')}`,
       'Render spec: ssd-render-1.0',
       'I rendered this document using the above spec, confirmed the output, and signed it.',
       `Signature: ${sigField}`,
