@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>SSD</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0a0a0a">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0a0a;
+      --surface: #141414;
+      --surface-2: #1e1e1e;
+      --text: #e8e8e8;
+      --text-muted: #666;
+      --border: #2a2a2a;
+      --primary: #c8a96e;
+      --primary-hover: #b8935a;
+      --success: #4caf77;
+      --warning: #e8a020;
+      --danger: #e05050;
+      --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      --radius: 8px;
+      --tab-h: 58px;
+    }
+    html, body { height: 100%; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg); color: var(--text);
+      font-size: 16px; line-height: 1.5;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    /* ── LAYOUT ─────────────────────────────────────────────────────────── */
+    .panel {
+      display: none;
+      min-height: calc(100vh - var(--tab-h));
+      padding: 16px 16px calc(var(--tab-h) + 16px);
+      overflow-y: auto;
+    }
+    .panel.active { display: block; }
+
+    /* ── TAB BAR ────────────────────────────────────────────────────────── */
+    #tab-bar {
+      position: fixed; bottom: 0; left: 0; right: 0; height: var(--tab-h);
+      display: flex; background: var(--surface);
+      border-top: 1px solid var(--border); z-index: 200;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .tab-btn {
+      flex: 1; background: none; border: none; color: var(--text-muted);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 3px; font-size: 11px; cursor: pointer; padding: 6px 0;
+      transition: color 0.15s; -webkit-tap-highlight-color: transparent;
+    }
+    .tab-btn.active { color: var(--primary); }
+    .tab-btn svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+
+    /* ── MSG BAR ────────────────────────────────────────────────────────── */
+    #msg {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--bg); padding: 8px 0;
+      min-height: 0; font-size: 14px;
+    }
+    #msg:empty { padding: 0; }
+
+    /* ── TYPOGRAPHY ─────────────────────────────────────────────────────── */
+    h2 { font-size: 18px; font-weight: 700; margin-bottom: 16px; color: var(--text); }
+    h3 { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin: 20px 0 8px; }
+    p { font-size: 15px; line-height: 1.6; }
+    .muted { color: var(--text-muted); font-size: 13px; }
+    .mono { font-family: var(--mono); font-size: 12px; }
+
+    /* ── STATUS CLASSES ─────────────────────────────────────────────────── */
+    .ok   { color: var(--success); }
+    .warn { color: var(--warning); }
+    .fail { color: var(--danger); }
+
+    /* ── BUTTONS ────────────────────────────────────────────────────────── */
+    button, .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-height: 44px; padding: 10px 18px;
+      border-radius: var(--radius); border: none; cursor: pointer;
+      font-size: 15px; font-family: inherit; font-weight: 500;
+      transition: background 0.15s, opacity 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn-primary, button[data-primary] {
+      background: var(--primary); color: #000;
+    }
+    .btn-primary:hover, button[data-primary]:hover { background: var(--primary-hover); }
+    .btn-primary:disabled, button:disabled { opacity: 0.4; cursor: default; }
+    .btn-secondary {
+      background: var(--surface-2); color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: #282828; }
+    .btn-block { width: 100%; margin-top: 10px; }
+    .btn-row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+    .btn-row button { flex: 1; }
+
+    /* ── FORMS ──────────────────────────────────────────────────────────── */
+    label { display: block; font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 6px; margin-top: 16px; }
+    label:first-child { margin-top: 0; }
+    input[type=text], select, textarea {
+      width: 100%; background: var(--surface-2); border: 1px solid var(--border);
+      color: var(--text); padding: 12px 14px; border-radius: var(--radius);
+      font-size: 16px; font-family: inherit; appearance: none;
+    }
+    input[type=text]:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); }
+    textarea { resize: vertical; min-height: 140px; line-height: 1.6; }
+    select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23666' stroke-width='1.5' fill='none'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; }
+    .form-hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+    /* ── BADGES ─────────────────────────────────────────────────────────── */
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 4px;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.05em;
+      background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border);
+    }
+    .badge-primary { background: rgba(200,169,110,0.15); color: var(--primary); border-color: rgba(200,169,110,0.3); }
+    .badge-danger  { background: rgba(224,80,80,0.15);  color: var(--danger);  border-color: rgba(224,80,80,0.3); }
+
+    /* ── WIZARD ─────────────────────────────────────────────────────────── */
+    .wizard-steps { margin: 8px 0 24px; display: flex; flex-direction: column; gap: 12px; }
+    .step {
+      display: flex; gap: 14px; align-items: flex-start;
+      padding: 14px; border-radius: var(--radius);
+      background: var(--surface); border: 1px solid var(--border);
+    }
+    .step-num {
+      width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700; margin-top: 1px;
+    }
+    .step.current .step-num { background: var(--primary); color: #000; }
+    .step.done .step-num    { background: var(--success); color: #000; }
+    .step.pending .step-num { background: var(--surface-2); color: var(--text-muted); }
+    .step-body { flex: 1; }
+    .step-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+    .step.pending .step-title { color: var(--text-muted); }
+    .step.done    .step-title { color: var(--text-muted); text-decoration: line-through; }
+    .step-desc { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
+    .step.done  .step-desc { display: none; }
+    .step.pending .step-desc { display: none; }
+
+    /* ── HOME STATUS ────────────────────────────────────────────────────── */
+    .identity-card {
+      display: flex; gap: 16px; align-items: center;
+      padding: 16px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); margin-bottom: 20px;
+    }
+    canvas#home-identicon { border-radius: 8px; flex-shrink: 0; }
+    .identity-info { flex: 1; min-width: 0; }
+    .identity-name { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+    .identity-hash { font-family: var(--mono); font-size: 12px; color: var(--text-muted); word-break: break-all; }
+    .status-rows { display: flex; flex-direction: column; gap: 8px; }
+    .status-row { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+    .status-label { color: var(--text-muted); }
+
+    /* ── SOCIAL ─────────────────────────────────────────────────────────── */
+    .token-box {
+      font-family: var(--mono); font-size: 11px;
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px;
+      word-break: break-all; white-space: pre-wrap;
+      margin-top: 10px; user-select: all;
+      color: var(--primary);
+    }
+    .post-box {
+      font-family: var(--mono); font-size: 12px;
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px;
+      word-break: break-word; white-space: pre-wrap;
+      margin-top: 10px; user-select: all;
+    }
+
+    /* ── DOCS ───────────────────────────────────────────────────────────── */
+    .artifact-card {
+      padding: 14px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); margin-bottom: 10px; cursor: pointer;
+      transition: border-color 0.15s; -webkit-tap-highlight-color: transparent;
+    }
+    .artifact-card:active { border-color: var(--primary); }
+    .artifact-summary { font-size: 14px; margin-bottom: 6px; }
+    .artifact-meta { display: flex; gap: 8px; align-items: center; font-size: 12px; }
+
+    .preview-box {
+      font-family: var(--mono); font-size: 12px;
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px;
+      white-space: pre-wrap; word-break: break-word;
+      margin: 12px 0; max-height: 260px; overflow-y: auto;
+    }
+    .seal-toggle {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); margin: 12px 0; cursor: pointer;
+    }
+    .seal-toggle input { width: 20px; height: 20px; cursor: pointer; accent-color: var(--primary); }
+    .seal-toggle-label { font-size: 14px; }
+    .seal-toggle-hint  { font-size: 12px; color: var(--text-muted); }
+
+    /* ── KEYS ───────────────────────────────────────────────────────────── */
+    .key-item {
+      padding: 12px 14px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); margin-bottom: 8px;
+    }
+    .key-item.revoked { opacity: 0.5; }
+    .key-item-name { font-size: 14px; font-weight: 500; margin-bottom: 4px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .key-item-hash { font-family: var(--mono); font-size: 11px; color: var(--text-muted); margin-bottom: 8px; }
+    .key-item button { min-height: 36px; font-size: 13px; padding: 6px 14px; }
+    .import-area { padding: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+
+<!-- Message bar -->
+<div id="msg"></div>
+
+<!-- ── HOME ─────────────────────────────────────────────────────────────── -->
+<div id="panel-home" class="panel active">
+  <h2>Home</h2>
+
+  <!-- Wizard (hidden when complete) -->
+  <div id="home-wizard">
+    <p class="muted" style="margin-bottom:16px">Set up your signing identity to get started.</p>
+    <div class="wizard-steps">
+
+      <div id="wz-1" class="step current">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Register passkey</div>
+          <div class="step-desc">Your passkey protects your private keys. Use Android Chrome with biometric unlock.</div>
+          <button class="btn-primary" id="wz-btn-1" onclick="app.registerPasskey()">Set up passkey</button>
+        </div>
+      </div>
+
+      <div id="wz-2" class="step pending">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Create your identity</div>
+          <div class="step-desc">Generates your owner (O:) and device (D:) signing keys.</div>
+          <button class="btn-primary" id="wz-btn-2" onclick="app.ensureIdentity()" disabled>Create identity</button>
+        </div>
+      </div>
+
+      <div id="wz-3" class="step pending">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Share your beacon</div>
+          <div class="step-desc">Paste your SSDKEY beacon into your social media bio so others can find your key.</div>
+          <button class="btn-primary" id="wz-btn-3" onclick="app.shareBeacon()" disabled>Copy beacon</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Status (hidden when wizard not done) -->
+  <div id="home-status" style="display:none">
+    <div class="identity-card">
+      <canvas id="home-identicon" width="64" height="64"></canvas>
+      <div class="identity-info">
+        <div class="identity-name" id="home-okey-name">—</div>
+        <div class="identity-hash" id="home-hash8">—</div>
+      </div>
+    </div>
+    <div class="status-rows">
+      <div class="status-row">
+        <span class="status-label">Passkey</span>
+        <span id="home-passkey-status" class="ok">—</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Device key</span>
+        <span id="home-dkey-status">—</span>
+      </div>
+    </div>
+    <div style="margin-top:20px">
+      <button class="btn-secondary btn-block" onclick="app.shareBeacon()">Copy SSDKEY beacon</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── SOCIAL ────────────────────────────────────────────────────────────── -->
+<div id="panel-social" class="panel">
+  <h2>Social</h2>
+
+  <div id="social-compose">
+    <label>Signing key</label>
+    <select id="social-key-select" onchange="app._prefillIdentity()"></select>
+
+    <label>Your identity <span class="form-hint" style="display:inline">(platform:handle, e.g. fb:profile/alice)</span></label>
+    <input type="text" id="social-identity" placeholder="fb:profile/username" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+
+    <label>Post text</label>
+    <textarea id="social-text" placeholder="Write your post…" rows="7"></textarea>
+
+    <button class="btn-primary btn-block" onclick="app.signSocial()" style="margin-top:14px">Sign post</button>
+  </div>
+
+  <div id="social-result" style="display:none">
+    <p class="muted" style="margin-bottom:12px">Signed post — copy and paste into your social platform:</p>
+    <div class="post-box" id="social-full-post"></div>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="app.copySocialPost()">Copy post</button>
+      <button class="btn-secondary" onclick="app.copySocialToken()">Copy token only</button>
+    </div>
+    <h3>Token</h3>
+    <div class="token-box" id="social-token-display"></div>
+    <button class="btn-secondary btn-block" onclick="app.newSocialPost()" style="margin-top:16px">New post</button>
+  </div>
+</div>
+
+<!-- ── DOCS ──────────────────────────────────────────────────────────────── -->
+<div id="panel-docs" class="panel">
+
+  <!-- List view -->
+  <div id="docs-list">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h2 style="margin:0">Docs</h2>
+      <button class="btn-primary" style="min-height:38px;font-size:14px;padding:8px 16px" onclick="app.newDoc()">+ New</button>
+    </div>
+    <div id="docs-artifact-list"></div>
+  </div>
+
+  <!-- Compose view -->
+  <div id="docs-compose" style="display:none">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <button class="btn-secondary" style="min-height:36px;font-size:14px;padding:8px 14px" onclick="app.loadDocs()">← Back</button>
+      <h2 style="margin:0">New document</h2>
+    </div>
+    <label>Document text</label>
+    <textarea id="docs-text" placeholder="Enter your document content…" rows="10"></textarea>
+    <label>Sign with</label>
+    <select id="docs-key-select"></select>
+    <button class="btn-primary btn-block" onclick="app.previewDoc()" style="margin-top:14px">Preview & Sign</button>
+  </div>
+
+  <!-- Preview / confirm view -->
+  <div id="docs-preview" style="display:none">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <button class="btn-secondary" style="min-height:36px;font-size:14px;padding:8px 14px" onclick="app._showDocsView('docs-compose')">← Back</button>
+      <h2 style="margin:0">Review</h2>
+    </div>
+    <p class="muted" style="margin-bottom:8px">This is exactly what will be signed:</p>
+    <div class="preview-box" id="docs-preview-text"></div>
+    <label for="docs-seal-self-check" class="seal-toggle" style="margin-top:0">
+      <input type="checkbox" id="docs-seal-self-check">
+      <div>
+        <div class="seal-toggle-label">Seal for myself</div>
+        <div class="seal-toggle-hint">Encrypts the document — only you can open it</div>
+      </div>
+    </label>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="app.signDoc()">Sign &amp; Save</button>
+      <button class="btn-secondary" onclick="app.loadDocs()">Cancel</button>
+    </div>
+  </div>
+
+  <!-- View artifact -->
+  <div id="docs-view" style="display:none">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <button class="btn-secondary" style="min-height:36px;font-size:14px;padding:8px 14px" onclick="app.loadDocs()">← Back</button>
+      <div id="docs-view-meta" style="display:flex;gap:8px;align-items:center"></div>
+    </div>
+    <div class="preview-box" id="docs-view-content" style="max-height:none"></div>
+    <button class="btn-secondary btn-block" onclick="app.downloadArtifact()" style="margin-top:14px">Download .ssd</button>
+  </div>
+</div>
+
+<!-- ── KEYS ──────────────────────────────────────────────────────────────── -->
+<div id="panel-keys" class="panel">
+  <h2>Keys</h2>
+
+  <!-- Beacon share -->
+  <h3>Your beacon</h3>
+  <div id="keys-beacon-list"></div>
+
+  <!-- Import -->
+  <h3>Import a key</h3>
+  <div class="import-area">
+    <label style="margin-top:0">Paste an SSDKEY beacon or key card JSON</label>
+    <textarea id="keys-import-text" rows="3" placeholder="[SSDKEY:…] or {…}" style="font-size:13px;font-family:var(--mono)"></textarea>
+    <button class="btn-primary btn-block" onclick="app.importKey()" style="margin-top:10px">Import key</button>
+  </div>
+
+  <!-- My keys -->
+  <h3>My keys</h3>
+  <div id="keys-my-list"></div>
+
+  <!-- Contact keys -->
+  <h3>Imported keys</h3>
+  <div id="keys-contact-list"></div>
+</div>
+
+<!-- ── TAB BAR ───────────────────────────────────────────────────────────── -->
+<nav id="tab-bar">
+  <button class="tab-btn active" id="tab-home-btn" onclick="app.tab('home')">
+    <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    Home
+  </button>
+  <button class="tab-btn" id="tab-social-btn" onclick="app.tab('social')">
+    <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+    Social
+  </button>
+  <button class="tab-btn" id="tab-docs-btn" onclick="app.tab('docs')">
+    <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+    Docs
+  </button>
+  <button class="tab-btn" id="tab-keys-btn" onclick="app.tab('keys')">
+    <svg viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+    Keys
+  </button>
+</nav>
+
+<!-- ── SCRIPTS ───────────────────────────────────────────────────────────── -->
+<script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+const APP_VERSION = 'ssd-v61';
+const MOCK_MODE = new URLSearchParams(location.search).has('mock');
+const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
+const log = (...a) => console.log('[SSD-basic]', ...a);
+</script>
+<script src="db.js"></script>
+<script src="cryptoOps.js"></script>
+<script src="passkey.js"></script>
+<script src="keyring.js"></script>
+<script src="signer-engines.js"></script>
+<script>
+'use strict';
+
+// ─── OPFS STORE ───────────────────────────────────────────────────────────────
+const opfsStore = {
+  async _resolve(path, create = false) {
+    const root = await navigator.storage.getDirectory();
+    const parts = path.split('/').filter(Boolean);
+    let dir = root;
+    for (const part of parts.slice(0, -1)) {
+      dir = await dir.getDirectoryHandle(part, { create });
+    }
+    return { dir, name: parts[parts.length - 1] };
+  },
+  async write(path, bytes) {
+    const { dir, name } = await this._resolve(path, true);
+    const fh = await dir.getFileHandle(name, { create: true });
+    const w = await fh.createWritable();
+    await w.write(bytes);
+    await w.close();
+  },
+  async read(path) {
+    const { dir, name } = await this._resolve(path);
+    const fh = await dir.getFileHandle(name);
+    const f = await fh.getFile();
+    return new Uint8Array(await f.arrayBuffer());
+  },
+  async delete(path) {
+    const { dir, name } = await this._resolve(path);
+    await dir.removeEntry(name);
+  },
+  async list(dirPath) {
+    const root = await navigator.storage.getDirectory();
+    const parts = dirPath.split('/').filter(Boolean);
+    let dir = root;
+    for (const p of parts) dir = await dir.getDirectoryHandle(p, { create: true });
+    const names = [];
+    for await (const [n] of dir.entries()) names.push(n);
+    return names;
+  },
+  async export(path, filename) {
+    const bytes = await this.read(path);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  },
+};
+
+// ─── IDENTICON ───────────────────────────────────────────────────────────────
+const identicon = {
+  render(seed, canvas, size = 64) {
+    const ctx = canvas.getContext('2d');
+    canvas.width = size; canvas.height = size;
+    ctx.clearRect(0, 0, size, size);
+    const bits = [];
+    for (let i = 0; i < 15; i++) bits.push((seed[Math.floor(i / 8)] >> (7 - (i % 8))) & 1);
+    const grid = [];
+    for (let r = 0; r < 5; r++) {
+      const row = [];
+      for (let c = 0; c < 5; c++) { const mc = c > 2 ? 4 - c : c; row.push(bits[r * 3 + mc]); }
+      grid.push(row);
+    }
+    const hue = Math.floor((seed[16] / 255) * 360);
+    const sat = 45 + Math.floor((seed[17] / 255) * 30);
+    const lig = 40 + Math.floor((seed[18] / 255) * 25);
+    ctx.fillStyle = `hsl(${hue},${sat}%,${lig}%)`;
+    const cell = size / 5;
+    for (let r = 0; r < 5; r++) for (let c = 0; c < 5; c++) {
+      if (grid[r][c]) ctx.fillRect(c * cell, r * cell, cell, cell);
+    }
+  },
+  renderToDataURL(seed, size = 64) {
+    const c = document.createElement('canvas');
+    this.render(seed, c, size);
+    return c.toDataURL();
+  },
+};
+
+// ─── APP ─────────────────────────────────────────────────────────────────────
+const app = {
+  _sigCtx:      null,
+  _deliverBytes: null,
+  _deliverFilename: null,
+  _lastSocialPost: null,
+  _viewArtifactId: null,
+
+  async init() {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' }).catch(console.warn);
+    }
+    await this.refreshHome();
+  },
+
+  async tab(name) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById(`panel-${name}`).classList.add('active');
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(`tab-${name}-btn`).classList.add('active');
+    this.clearMsg();
+    if (name === 'home')   await this.refreshHome();
+    if (name === 'social') await this.loadSocialKeys();
+    if (name === 'docs')   await this.loadDocs();
+    if (name === 'keys')   await this.loadKeys();
+  },
+
+  msg(html) { document.getElementById('msg').innerHTML = html; },
+  clearMsg() { document.getElementById('msg').innerHTML = ''; },
+
+  _esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  },
+
+  // ── HOME ──────────────────────────────────────────────────────────────────
+
+  async refreshHome() {
+    const hasCred = !!(await db.get('settings', 'credential_id'));
+    const allKeys = await db.getAll('my_keys');
+    const dKey = allKeys.find(k => k.name.startsWith('D:') && !k.is_revoked);
+    const oKey = allKeys.find(k => k.name.startsWith('O:') && !k.is_revoked);
+    const done = hasCred && dKey && oKey;
+
+    document.getElementById('home-wizard').style.display = done ? 'none' : '';
+    document.getElementById('home-status').style.display = done ? '' : 'none';
+
+    if (!done) {
+      this._updateWizardSteps(hasCred, dKey, oKey);
+    } else {
+      await this._renderHomeStatus(oKey);
+    }
+  },
+
+  _updateWizardSteps(hasCred, dKey, oKey) {
+    const step1done = hasCred;
+    const step2done = hasCred && dKey && oKey;
+
+    const setClass = (id, done, current) =>
+      document.getElementById(id).className = `step ${done ? 'done' : current ? 'current' : 'pending'}`;
+
+    setClass('wz-1', step1done, !step1done);
+    setClass('wz-2', step2done, step1done && !step2done);
+    setClass('wz-3', false, step2done);
+
+    document.getElementById('wz-btn-1').disabled = step1done;
+    document.getElementById('wz-btn-2').disabled = !step1done || step2done;
+    document.getElementById('wz-btn-3').disabled = !step2done;
+  },
+
+  async _renderHomeStatus(oKey) {
+    const seed = await cryptoOps.identiconSeed(oKey.public_key_b64);
+    identicon.render(seed, document.getElementById('home-identicon'), 64);
+    document.getElementById('home-okey-name').textContent = oKey.name.startsWith('O:') ? oKey.name.slice(2) : oKey.name;
+    document.getElementById('home-hash8').textContent = oKey.hash8;
+    const hasCred = !!(await db.get('settings', 'credential_id'));
+    document.getElementById('home-passkey-status').textContent = hasCred ? '✓ Registered' : '✗ Not registered';
+    document.getElementById('home-passkey-status').className = hasCred ? 'ok' : 'fail';
+    const allKeys = await db.getAll('my_keys');
+    const dKey = allKeys.find(k => k.name.startsWith('D:') && !k.is_revoked);
+    document.getElementById('home-dkey-status').textContent = dKey ? (dKey.name.startsWith('D:') ? dKey.name.slice(2) : dKey.name) : '✗ Missing';
+    document.getElementById('home-dkey-status').className = dKey ? '' : 'fail';
+  },
+
+  async registerPasskey() {
+    if (await db.get('settings', 'credential_id')) {
+      this.msg('<span class="warn">Passkey already registered.</span>'); return;
+    }
+    this.msg('Registering passkey…');
+    try {
+      const { prfSupported } = await passkey.register('SSD Keyring');
+      if (!prfSupported) {
+        await db.del('settings', 'credential_id');
+        this.msg('<span class="fail">This device does not support secure key storage. Use Android Chrome or iOS 18+ Safari.</span>');
+        return;
+      }
+      this.msg('<span class="ok">✓ Passkey registered.</span>');
+      await this.refreshHome();
+    } catch(e) {
+      this.msg(`<span class="fail">Registration failed: ${e.message}</span>`);
+    }
+  },
+
+  async ensureIdentity() {
+    this.msg('Authenticating…');
+    try {
+      await keyring.ensureUnlocked();
+      const allKeys = await db.getAll('my_keys');
+      const dKey = allKeys.find(k => k.name.startsWith('D:') && !k.is_revoked);
+      const oKey = allKeys.find(k => k.name.startsWith('O:') && !k.is_revoked);
+      if (!dKey) { this.msg('Creating device key…'); await keyring.createKey('D:My Device'); }
+      if (!oKey) { this.msg('Creating owner identity…'); await keyring.createKey('O:My Identity'); }
+      this.msg('Setting up encryption key…');
+      await keyring.ensureEncryptionKey();
+      this.msg('<span class="ok">✓ Identity ready.</span>');
+      await this.refreshHome();
+    } catch(e) {
+      this.msg(`<span class="fail">Failed: ${e.message}</span>`);
+    }
+  },
+
+  async shareBeacon() {
+    const allKeys = await db.getAll('my_keys');
+    const oKey = allKeys.find(k => k.name.startsWith('O:') && !k.is_revoked);
+    if (!oKey) { this.msg('<span class="warn">No owner key found — complete identity setup first.</span>'); return; }
+    const token = `[SSDKEY:${oKey.hash8}:${oKey.public_key_b64}]`;
+    try {
+      await navigator.clipboard.writeText(token);
+      this.msg(`<span class="ok">✓ Beacon copied — paste into your social media bio.</span><div class="token-box" style="margin-top:8px">${this._esc(token)}</div>`);
+    } catch {
+      this.msg(`<p class="muted" style="margin-bottom:8px">Copy this into your social media bio:</p><div class="token-box">${this._esc(token)}</div>`);
+    }
+  },
+
+  // ── SOCIAL ────────────────────────────────────────────────────────────────
+
+  async loadSocialKeys() {
+    const sel = document.getElementById('social-key-select');
+    const keys = (await db.getAll('my_keys')).filter(k => !k.is_revoked);
+    sel.innerHTML = keys.length
+      ? keys.map(k => `<option value="${k.id}">${this._esc(k.name)} (${k.hash8})</option>`).join('')
+      : '<option value="">— No keys — complete Home setup first —</option>';
+    await this._prefillIdentity();
+  },
+
+  async _prefillIdentity() {
+    const sel = document.getElementById('social-key-select');
+    if (!sel.value) return;
+    const rec = await db.get('my_keys', sel.value);
+    const identEl = document.getElementById('social-identity');
+    if (rec?.identity && !identEl.value) identEl.value = rec.identity;
+  },
+
+  async signSocial() {
+    const text = document.getElementById('social-text').value.trim();
+    const keyId = document.getElementById('social-key-select').value;
+    const identity = document.getElementById('social-identity').value.trim();
+    if (!text)     { this.msg('<span class="warn">Write something first.</span>'); return; }
+    if (!keyId)    { this.msg('<span class="warn">Select a signing key.</span>'); return; }
+    if (!identity) { this.msg('<span class="warn">Enter your platform identity (e.g. fb:profile/username).</span>'); return; }
+    this.msg('Signing…');
+    try {
+      await keyring.ensureUnlocked();
+      const rec = await db.get('my_keys', keyId);
+      if (!rec) throw new Error('Key not found.');
+      if (rec.identity !== identity) await db.put('my_keys', { ...rec, identity });
+
+      const canonical  = signer.canonicalise(text);
+      const timestamp  = new Date().toISOString().slice(0, 16) + 'Z';
+      const hashBuf    = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
+      const contentHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,'0')).join('');
+      const signedBytes = new TextEncoder().encode(`${rec.hash8}:${identity}:${contentHash}:${timestamp}`);
+      const privateKey  = await keyring.getPrivateKey(keyId);
+      const sig         = await cryptoOps.sign(privateKey, signedBytes);
+      const content8    = contentHash.slice(0, 8);
+      const token       = `[SSD:${rec.hash8}:${identity}:${content8}:${sig}:${timestamp}]`;
+      const fullPost    = canonical.trimEnd() + '\n\n' + token;
+
+      this.clearMsg();
+      this._lastSocialPost = { fullPost, token };
+      document.getElementById('social-full-post').textContent = fullPost;
+      document.getElementById('social-token-display').textContent = token;
+      document.getElementById('social-compose').style.display = 'none';
+      document.getElementById('social-result').style.display = '';
+    } catch(e) {
+      this.msg(`<span class="fail">Sign failed: ${e.message}</span>`);
+    }
+  },
+
+  async copySocialPost() {
+    if (!this._lastSocialPost) return;
+    try {
+      await navigator.clipboard.writeText(this._lastSocialPost.fullPost);
+      this.msg('<span class="ok">✓ Copied.</span>');
+    } catch { this.msg('<span class="warn">Copy failed — select the text above manually.</span>'); }
+  },
+
+  async copySocialToken() {
+    if (!this._lastSocialPost) return;
+    try {
+      await navigator.clipboard.writeText(this._lastSocialPost.token);
+      this.msg('<span class="ok">✓ Token copied.</span>');
+    } catch { this.msg('<span class="warn">Copy failed — select the text above manually.</span>'); }
+  },
+
+  newSocialPost() {
+    this._lastSocialPost = null;
+    document.getElementById('social-result').style.display = 'none';
+    document.getElementById('social-compose').style.display = '';
+    document.getElementById('social-text').value = '';
+    this.clearMsg();
+    document.getElementById('social-text').focus();
+  },
+
+  // ── DOCS ──────────────────────────────────────────────────────────────────
+
+  _showDocsView(id) {
+    ['docs-list','docs-compose','docs-preview','docs-view'].forEach(v => {
+      document.getElementById(v).style.display = v === id ? '' : 'none';
+    });
+    this.clearMsg();
+  },
+
+  async loadDocs() {
+    this._showDocsView('docs-list');
+    const artifacts = (await db.getAll('artifacts')).sort((a,b) => b.created.localeCompare(a.created));
+    const list = document.getElementById('docs-artifact-list');
+    if (!artifacts.length) {
+      list.innerHTML = '<p class="muted">No documents yet. Tap <strong>+ New</strong> to create one.</p>';
+      return;
+    }
+    list.innerHTML = artifacts.map(a => `
+      <div class="artifact-card" onclick="app.openArtifact('${a.id}')">
+        <div class="artifact-summary">${this._esc(a.summary || '(no summary)')}</div>
+        <div class="artifact-meta">
+          ${a.encrypted ? '<span class="badge badge-primary">Sealed</span>' : '<span class="badge">Signed</span>'}
+          <span class="muted">${a.created ? new Date(a.created).toLocaleDateString() : ''}</span>
+        </div>
+      </div>`).join('');
+  },
+
+  async newDoc() {
+    this._sigCtx = null;
+    document.getElementById('docs-text').value = '';
+    document.getElementById('docs-seal-self-check').checked = false;
+    this._showDocsView('docs-compose');
+    const sel = document.getElementById('docs-key-select');
+    const keys = (await db.getAll('my_keys')).filter(k => !k.is_revoked);
+    sel.innerHTML = keys.length
+      ? keys.map(k => `<option value="${k.id}">${this._esc(k.name)} (${k.hash8})</option>`).join('')
+      : '<option value="">— No keys —</option>';
+    document.getElementById('docs-text').focus();
+  },
+
+  async previewDoc() {
+    const text  = document.getElementById('docs-text').value.trim();
+    const keyId = document.getElementById('docs-key-select').value;
+    if (!text)  { this.msg('<span class="warn">Document text is empty.</span>'); return; }
+    if (!keyId) { this.msg('<span class="warn">Select a signing key.</span>'); return; }
+    const rec = await db.get('my_keys', keyId);
+    if (!rec) { this.msg('<span class="fail">Key not found.</span>'); return; }
+    const canonical = signer.canonicalise(text);
+    const timestamp = new Date().toISOString();
+    const block = signer.buildSignatureBlock(rec.hash8, rec.name, timestamp);
+    const render = signer.buildRender(canonical, block);
+    this._sigCtx = { keyId, canonical, timestamp, render, rec };
+    document.getElementById('docs-preview-text').textContent = render;
+    this._showDocsView('docs-preview');
+  },
+
+  async signDoc() {
+    if (!this._sigCtx) { this._showDocsView('docs-list'); return; }
+    const sealForSelf = document.getElementById('docs-seal-self-check').checked;
+    const { keyId, canonical, timestamp, render, rec } = this._sigCtx;
+    this.msg('Signing…');
+    try {
+      await keyring.ensureUnlocked();
+      const enc    = new TextEncoder();
+      const engine = renderEngines['ssd-render-1.0'];
+      const content = { source: canonical, render };
+      const files = {};
+      for (const [name, bytes] of Object.entries(engine.hashTargets(content)))
+        files[name] = 'sha256:' + await cryptoOps.sha256(bytes);
+      const manifestObj = {
+        version: '1.0', render_spec: 'ssd-render-1.0',
+        signed_at: timestamp, signer_hash8: rec.hash8, signer_name: rec.name, files,
+      };
+      const manifestBytes = enc.encode(JSON.stringify(manifestObj, null, 2));
+      const privateKey    = await keyring.getPrivateKey(keyId);
+      const signature     = await cryptoOps.sign(privateKey, manifestBytes);
+      const manifestHash  = 'sha256:' + await cryptoOps.sha256(manifestBytes);
+      const signatureObj  = {
+        algorithm: 'Ed25519', signer_hash8: rec.hash8, capacity: ['ssd:author'],
+        signed_at: timestamp, manifest_hash: manifestHash, signature,
+      };
+      const innerZip = await artifact.pack(content, 'ssd-render-1.0', manifestObj, signatureObj);
+
+      let outputBytes = innerZip;
+      let encrypted = false;
+
+      if (sealForSelf) {
+        this.msg('Sealing…');
+        const myEncPub = await db.get('settings', 'my_encryption_key_pub');
+        if (!myEncPub) throw new Error('No encryption key — complete Home identity setup first.');
+        const outerMeta = JSON.stringify({ ssd: 'sealed-enc-v1', signed_at: timestamp, signer_hash8: rec.hash8, manifest_hash: manifestHash });
+        const outerSig  = await cryptoOps.sign(privateKey, enc.encode(outerMeta));
+        const dekBytes  = window.crypto.getRandomValues(new Uint8Array(32));
+        const dekKey    = await cryptoOps.importAESKey(dekBytes);
+        const { iv_b64: dataIv, ct_b64: dataCt } = await cryptoOps.encryptBytes(innerZip, dekKey);
+        const recipientPub = await cryptoOps.importX25519PublicKeyB64(myEncPub.value);
+        const slot = { for_key: myEncPub.value, ...await cryptoOps.wrapDEK(dekBytes, recipientPub) };
+        const envelope = { ssd: 'sealed-enc-v1', signed_at: timestamp, signer_hash8: rec.hash8, manifest_hash: manifestHash, outer_sig: outerSig, recipients: [slot], iv: dataIv, ct: dataCt };
+        outputBytes = enc.encode(JSON.stringify(envelope));
+        encrypted = true;
+      }
+
+      const artifactId = window.crypto.randomUUID();
+      const opfsPath   = `artifacts/${artifactId}.ssd`;
+      await opfsStore.write(opfsPath, outputBytes);
+      await db.put('artifacts', {
+        id: artifactId, direction: 'sent', signed_by_key_id: keyId,
+        hash8: rec.hash8,
+        artifact_hash: 'sha256:' + await cryptoOps.sha256(outputBytes),
+        render_spec: 'ssd-render-1.0', created: timestamp,
+        encrypted, encrypted_for: encrypted ? ['__self__'] : [],
+        opfs_path: opfsPath, manifest_hash: manifestHash,
+        summary: canonical.trim().slice(0, 80),
+      });
+
+      this._deliverBytes    = outputBytes;
+      this._deliverFilename = `ssd-${rec.hash8}-${Date.now()}.ssd`;
+      this._sigCtx = null;
+      await this.loadDocs();
+      this.msg(`<span class="ok">✓ Document ${encrypted ? 'sealed' : 'signed'} and saved.</span>
+        <button class="btn-secondary" style="margin-top:8px;min-height:36px;font-size:13px" onclick="app.downloadLastDoc()">Download .ssd</button>`);
+    } catch(e) {
+      this.msg(`<span class="fail">Signing failed: ${e.message}</span>`);
+    }
+  },
+
+  downloadLastDoc() {
+    if (!this._deliverBytes) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([this._deliverBytes], { type: 'application/octet-stream' }));
+    a.download = this._deliverFilename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  },
+
+  async openArtifact(id) {
+    const a = await db.get('artifacts', id);
+    if (!a) return;
+    this._viewArtifactId = id;
+    this._showDocsView('docs-view');
+    document.getElementById('docs-view-meta').innerHTML = `
+      <span class="${a.encrypted ? 'badge badge-primary' : 'badge'}">${a.encrypted ? 'Sealed' : 'Signed'}</span>
+      <span class="muted">${a.created ? new Date(a.created).toLocaleDateString() : ''}</span>`;
+    const content = document.getElementById('docs-view-content');
+    content.textContent = 'Loading…';
+    try {
+      const rawBytes = await opfsStore.read(a.opfs_path);
+      let render;
+      if (a.encrypted) {
+        const envelope = JSON.parse(new TextDecoder().decode(rawBytes));
+        const myEncKeys = await db.getAll('encryption_keys');
+        const slot = envelope.recipients?.find(r => myEncKeys.some(k => k.pub === r.for_key));
+        if (!slot) { content.textContent = '[Sealed for different recipients — cannot open here]'; return; }
+        this.msg('Decrypting…');
+        await keyring.ensureUnlocked();
+        const myPriv   = await keyring.getEncryptionPrivateKey(slot.for_key);
+        const dekBytes = await cryptoOps.unwrapDEK(slot, myPriv);
+        const dekKey   = await cryptoOps.importAESKey(dekBytes);
+        const innerZip = await cryptoOps.decryptBytes(envelope.iv, envelope.ct, dekKey);
+        this.clearMsg();
+        const unpacked = await artifact.unpack(innerZip);
+        render = unpacked.content.render || unpacked.content.source;
+      } else {
+        const unpacked = await artifact.unpack(rawBytes);
+        render = unpacked.content.render || unpacked.content.source;
+      }
+      content.textContent = render || '(empty)';
+    } catch(e) {
+      content.textContent = `Error opening document: ${e.message}`;
+    }
+  },
+
+  async downloadArtifact() {
+    if (!this._viewArtifactId) return;
+    const a = await db.get('artifacts', this._viewArtifactId);
+    if (!a) return;
+    try {
+      const bytes = await opfsStore.read(a.opfs_path);
+      const el = document.createElement('a');
+      el.href = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
+      el.download = `ssd-${a.hash8}-${Date.now()}.ssd`;
+      el.click();
+      URL.revokeObjectURL(el.href);
+    } catch(e) {
+      this.msg(`<span class="fail">Download failed: ${e.message}</span>`);
+    }
+  },
+
+  // ── KEYS ──────────────────────────────────────────────────────────────────
+
+  async loadKeys() {
+    const myKeys      = await db.getAll('my_keys');
+    const contactKeys = await db.getAll('contact_keys');
+
+    const oKeys = myKeys.filter(k => k.name.startsWith('O:') && !k.is_revoked);
+    document.getElementById('keys-beacon-list').innerHTML = oKeys.length
+      ? oKeys.map(k => `
+          <div class="key-item">
+            <div class="key-item-name">${this._esc(k.name)}</div>
+            <div class="key-item-hash">${k.hash8}</div>
+            <button class="btn-secondary" onclick="app.copyBeacon('${k.id}')">Copy beacon</button>
+          </div>`).join('')
+      : '<p class="muted">No owner keys yet — complete setup in Home.</p>';
+
+    document.getElementById('keys-my-list').innerHTML = myKeys.length
+      ? myKeys.map(k => `
+          <div class="key-item${k.is_revoked ? ' revoked' : ''}">
+            <div class="key-item-name">
+              ${this._esc(k.name)}
+              ${k.is_revoked ? '<span class="badge badge-danger">Revoked</span>' : ''}
+              ${k.is_default ? '<span class="badge badge-primary">Default</span>' : ''}
+            </div>
+            <div class="key-item-hash">${k.hash8}</div>
+          </div>`).join('')
+      : '<p class="muted">No keys.</p>';
+
+    document.getElementById('keys-contact-list').innerHTML = contactKeys.length
+      ? contactKeys.map(k => `
+          <div class="key-item">
+            <div class="key-item-name">${this._esc(k.name)}</div>
+            <div class="key-item-hash">${k.hash8}</div>
+          </div>`).join('')
+      : '<p class="muted">No imported keys yet.</p>';
+  },
+
+  async copyBeacon(keyId) {
+    const rec = await db.get('my_keys', keyId);
+    if (!rec) return;
+    const token = `[SSDKEY:${rec.hash8}:${rec.public_key_b64}]`;
+    try {
+      await navigator.clipboard.writeText(token);
+      this.msg('<span class="ok">✓ Beacon copied.</span>');
+    } catch {
+      this.msg(`<p class="muted" style="margin-bottom:6px">Copy this:</p><div class="token-box">${this._esc(token)}</div>`);
+    }
+  },
+
+  async importKey() {
+    const text = document.getElementById('keys-import-text').value.trim();
+    if (!text) { this.msg('<span class="warn">Paste a beacon or key card first.</span>'); return; }
+    this.msg('Importing…');
+    try {
+      const beaconMatch = text.match(/\[SSDKEY:([A-Za-z0-9_-]{8}):([A-Za-z0-9+/=_-]+)\]/);
+      if (beaconMatch) {
+        await this._importBeacon(beaconMatch[1], beaconMatch[2]); return;
+      }
+      const card = JSON.parse(text);
+      await this._importKeyCard(card);
+    } catch(e) {
+      this.msg(`<span class="fail">Import failed: ${e.message}</span>`);
+    }
+  },
+
+  async _importBeacon(hash8, pubB64) {
+    const computed = await cryptoOps.hash8(pubB64);
+    if (computed !== hash8) throw new Error('Beacon hash8 does not match public key.');
+    const existing = (await db.getAll('contact_keys')).find(k => k.hash8 === hash8);
+    if (existing) { this.msg(`<span class="warn">Already have key ${hash8}.</span>`); return; }
+    if ((await db.getAll('my_keys')).find(k => k.hash8 === hash8)) {
+      this.msg('<span class="warn">This is one of your own keys.</span>'); return;
+    }
+    const name = prompt(`Name for this contact's key (${hash8})?`, hash8);
+    if (!name) { this.clearMsg(); return; }
+    await db.put('contact_keys', {
+      id: window.crypto.randomUUID(), person_id: null, name, hash8,
+      public_key_b64: pubB64, identicon_algorithm: 'ssd-identicon-1.0',
+      self_image_b64: null, received_via: 'beacon',
+      received_at: new Date().toISOString(), expires: null,
+      recheck_interval_days: 90, last_checked: new Date().toISOString(),
+      revocation_hint: null, trust_type: 'peer',
+    });
+    document.getElementById('keys-import-text').value = '';
+    this.msg(`<span class="ok">✓ Key ${hash8} imported as "${this._esc(name)}".</span>`);
+    await this.loadKeys();
+  },
+
+  async _importKeyCard(card) {
+    if (!card.public_key || !card.hash8) throw new Error('Not a valid key card (missing public_key or hash8).');
+    const normalized = {
+      chain:                 card.chain                 ?? [],
+      encryption_key:        card.encryption_key        ?? null,
+      expires:               card.expires               ?? null,
+      hash8:                 card.hash8,
+      identicon_algorithm:   card.identicon_algorithm   ?? 'ssd-identicon-1.0',
+      issued:                card.issued                ?? null,
+      name:                  card.name,
+      public_key:            card.public_key,
+      recheck_interval_days: card.recheck_interval_days ?? 90,
+      revocation_hint:       card.revocation_hint       ?? null,
+      self_image:            card.self_image            ?? null,
+      self_signed:           card.self_signed,
+      signing_algorithm:     card.signing_algorithm     ?? 'Ed25519',
+      version:               card.version               ?? '1.0',
+    };
+    const valid = await keyring.verifyKeyCard(normalized);
+    if (!valid) throw new Error('Key card signature is invalid — may have been tampered with.');
+    const fp = await cryptoOps.hash8(card.public_key);
+    if (fp !== card.hash8) throw new Error('Fingerprint does not match public key — corrupt key card.');
+    const existing = (await db.getAll('contact_keys')).find(k => k.hash8 === card.hash8);
+    if (existing) { this.msg(`<span class="warn">Already have key ${card.hash8}.</span>`); return; }
+    if ((await db.getAll('my_keys')).find(k => k.hash8 === card.hash8)) {
+      this.msg('<span class="warn">This is one of your own keys.</span>'); return;
+    }
+    const name = prompt(`Name for "${card.name}" (${card.hash8})?`, card.name);
+    if (!name) { this.clearMsg(); return; }
+    await db.put('contact_keys', {
+      id: window.crypto.randomUUID(), person_id: null, name,
+      hash8: card.hash8, public_key_b64: card.public_key,
+      identicon_algorithm: card.identicon_algorithm || 'ssd-identicon-1.0',
+      self_image_b64: card.self_image || null, received_via: 'key-card',
+      received_at: new Date().toISOString(), expires: card.expires || null,
+      recheck_interval_days: card.recheck_interval_days || 90,
+      last_checked: new Date().toISOString(), revocation_hint: card.revocation_hint || null,
+      trust_type: 'peer',
+    });
+    document.getElementById('keys-import-text').value = '';
+    this.msg(`<span class="ok">✓ Key "${this._esc(name)}" (${card.hash8}) imported.</span>`);
+    await this.loadKeys();
+  },
+};
+
+// ─── BOOT ─────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => app.init());
+</script>
+</body>
+</html>
