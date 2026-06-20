@@ -529,7 +529,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v58';
+const APP_VERSION = 'ssd-v59';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD]', ...a);
@@ -896,7 +896,7 @@ const ui = {
     r.appendChild(d);
   },
   clear() { document.getElementById('results').innerHTML = ''; },
-  displayVerification(result) {
+  displayVerification(result, sealStatus) {
     const ok = v => v ? '<span class="ok">✓</span>' : '<span class="fail">✗</span>';
     let h = '<div class="verify-result">';
     h += `<div>${ok(result.signature_valid)} Signature ${result.signature_valid ? 'valid' : '<strong>INVALID</strong>'}</div>`;
@@ -909,6 +909,11 @@ const ui = {
       const who = result.signer_known ? ` — ${result.signer_name} (${result.trust_types.join(', ')})` : ' (unknown)';
       const cls = result.signer_known ? 'info' : 'warn';
       h += `<div class="${cls}">◎ Key: <span class="mono">${result.signer_hash8}</span>${who}</div>`;
+    }
+    if (sealStatus?.state === 'opened') {
+      h += `<div class="ok">✓ Sealed — opened as «${sealStatus.identity}»</div>`;
+    } else {
+      h += `<div class="ok">✓ Not sealed (public)</div>`;
     }
     for (const w of result.warnings) h += `<div class="warn">⚠ ${w}</div>`;
     for (const e of result.errors)   h += `<div class="fail">✗ ${e}</div>`;
@@ -1364,7 +1369,7 @@ const app = {
     const ctx = this._deliverCtx;
     if (!ctx) return;
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([ctx.outputBytes], { type: 'application/x-ssd-sealed' }));
+    a.href = URL.createObjectURL(new Blob([ctx.outputBytes], { type: 'application/octet-stream' }));
     a.download = ctx.filename;
     a.click();
     URL.revokeObjectURL(a.href);
@@ -1374,7 +1379,7 @@ const app = {
     const ctx = this._deliverCtx;
     if (!ctx || typeof navigator.share !== 'function') return;
     try {
-      const file = new File([ctx.outputBytes], ctx.filename, { type: 'application/x-ssd-sealed' });
+      const file = new File([ctx.outputBytes], ctx.filename, { type: 'application/octet-stream' });
       await navigator.share({ files: [file], title: 'Signed document' });
     } catch(e) {
       if (e.name !== 'AbortError') ui.display(`<span class="fail">Share failed: ${e.message}</span>`);
@@ -1582,6 +1587,7 @@ const app = {
       let zipBytes = rawBytes;
       let wasEncrypted = false;
       let outerSigStatus = null;
+      let openedAs = null;
 
       // Try to detect an encrypted envelope — only catch JSON parse failures here.
       // Any error inside the sealed-enc-v1 block propagates up naturally.
@@ -1616,7 +1622,18 @@ const app = {
         log('dec-5: my enc keys count:', myEncKeys.length);
         const slot = envelope.recipients?.find(r => myEncKeys.some(k => k.pub === r.for_key));
         log('dec-6: slot found:', !!slot);
-        if (!slot) throw new Error('This document is not addressed to any of this device\'s encryption keys.');
+        if (!slot) {
+          ui.clear();
+          const rCount = envelope.recipients?.length ?? 0;
+          let outerNote = `<div class="info" style="margin-bottom:8px">Encrypted to ${rCount} recipient${rCount !== 1 ? 's' : ''}.`;
+          if (outerSigStatus?.ok === true)       outerNote += ` Sealed by: <strong>${outerSigStatus.name}</strong> <span class="mono" style="font-size:11px">${outerSigStatus.fp}</span>`;
+          else if (outerSigStatus?.ok === false) outerNote += ' <span class="warn">Outer signature INVALID.</span>';
+          else if (outerSigStatus?.ok === null)  outerNote += ` Sealed by unknown key <span class="mono" style="font-size:11px">${outerSigStatus.fp}</span>.`;
+          outerNote += '</div>';
+          ui.display(outerNote);
+          ui.display('<div class="verify-result"><div class="warn">🔒 Sealed — not addressed to you</div><div style="margin-top:4px;color:var(--text-muted);font-size:12px">This document is sealed for different recipients. Content and inner signature cannot be verified.</div></div>');
+          return;
+        }
 
         ui.display('Encrypted document — authenticate to open…');
         await this._unlock();
@@ -1630,6 +1647,8 @@ const app = {
         zipBytes     = await cryptoOps.decryptBytes(envelope.iv, envelope.ct, dekKey);
         log('dec-11: content decrypted, zip len:', zipBytes.length);
         wasEncrypted = true;
+        const nameSetting = await db.get('settings', 'my_device_name');
+        openedAs = nameSetting?.value || 'this device';
       }
 
       const unpacked = await artifact.unpack(zipBytes);
@@ -1648,7 +1667,8 @@ const app = {
 
       ui.display('<strong>Rendered document:</strong>');
       document.getElementById('results').appendChild(unpacked.engine.toElement(unpacked.content));
-      ui.displayVerification(result);
+      const sealStatus = wasEncrypted ? { state: 'opened', identity: openedAs } : { state: 'public' };
+      ui.displayVerification(result, sealStatus);
 
       if (result.render_spec === 'ssd-key-transfer-1.0') {
         const contactKeys   = await db.getAll('contact_keys');
