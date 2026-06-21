@@ -97,6 +97,8 @@
     }
     .btn-secondary:hover { background: #282828; }
     .btn-block { width: 100%; margin-top: 10px; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger:hover { background: #c84040; }
     .btn-row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
     .btn-row button { flex: 1; }
 
@@ -393,6 +395,13 @@
   <!-- Contact keys -->
   <h3>Imported keys</h3>
   <div id="keys-contact-list"></div>
+
+  <!-- Factory Reset -->
+  <div style="margin-top:32px;border-top:1px solid var(--border);padding-top:20px">
+    <h3>Factory reset</h3>
+    <p class="muted">Wipes all local data on this device — keys, contacts, documents, and settings. Downloaded .ssd files are not affected.</p>
+    <button class="btn-danger btn-block" onclick="app.factoryReset()">Wipe all data…</button>
+  </div>
 </div>
 
 <!-- ── TAB BAR ───────────────────────────────────────────────────────────── -->
@@ -421,7 +430,7 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
-const APP_VERSION = 'ssd-v61';
+const APP_VERSION = 'ssd-v62';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD-basic]', ...a);
@@ -1042,6 +1051,28 @@ const app = {
     document.getElementById('keys-import-text').value = '';
     this.msg(`<span class="ok">✓ Key "${this._esc(name)}" (${card.hash8}) imported.</span>`);
     await this.loadKeys();
+  },
+
+  async factoryReset() {
+    if (!confirm('Wipe ALL data on this device?\n\nThis deletes every key, contact, document, and setting. It cannot be undone.\n\nDownloaded .ssd files are not affected.')) return;
+    try {
+      try {
+        const root = await navigator.storage.getDirectory();
+        await root.removeEntry('artifacts', { recursive: true });
+      } catch { /* OPFS may be empty */ }
+      db._db?.close();
+      await new Promise((resolve, reject) => {
+        const req = indexedDB.deleteDatabase('ssd-keyring');
+        req.onsuccess = resolve;
+        req.onerror   = () => reject(req.error);
+        req.onblocked = resolve;
+      });
+      keyring._sessionKey = null;
+    } catch(e) {
+      alert('Reset failed: ' + e.message);
+      return;
+    }
+    location.reload();
   },
 };
 
