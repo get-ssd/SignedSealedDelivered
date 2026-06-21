@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Signed, Sealed, Delivered</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>SSD</title>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#0a0a0a">
   <style>
@@ -21,518 +21,419 @@
       --warning: #e8a020;
       --danger: #e05050;
       --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-      --shadow: 0 2px 12px rgba(0,0,0,0.4);
-      --radius: 6px;
+      --radius: 8px;
+      --tab-h: 58px;
     }
     html, body { height: 100%; }
-    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
-
-    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 20px; display: flex; align-items: center; gap: 20px; position: sticky; top: 0; z-index: 100; }
-    .brand { font-size: 15px; font-weight: 700; color: var(--primary); letter-spacing: 0.12em; padding: 14px 0; white-space: nowrap; }
-    nav { display: flex; gap: 2px; flex-wrap: wrap; }
-    .nav-btn { background: none; border: none; color: var(--text-muted); padding: 10px 14px; cursor: pointer; border-radius: var(--radius); font-size: 13px; transition: color 0.15s, background 0.15s; }
-    .nav-btn:hover { color: var(--text); background: var(--surface-2); }
-    .nav-btn.active { color: var(--primary); }
-
-    main { max-width: 780px; margin: 0 auto; padding: 28px 20px 60px; }
-    body.mock-mode main { padding-bottom: 100px; }
-    .section { display: none; }
-    .section.active { display: block; }
-    h2 { font-size: 17px; font-weight: 600; margin-bottom: 20px; }
-    h3 { font-size: 14px; font-weight: 600; margin-bottom: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.07em; }
-
-    .form-group { margin-bottom: 16px; }
-    label { display: block; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
-    input[type=text], textarea, select {
-      width: 100%; background: var(--surface-2); border: 1px solid var(--border);
-      color: var(--text); padding: 10px 12px; border-radius: var(--radius); font-size: 14px; font-family: inherit;
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg); color: var(--text);
+      font-size: 16px; line-height: 1.5;
+      -webkit-text-size-adjust: 100%;
     }
-    input[type=text]:focus, textarea:focus, select:focus { outline: none; border-color: var(--primary); }
-    textarea { min-height: 220px; resize: vertical; font-family: var(--mono); font-size: 13px; }
-    select option { background: var(--surface-2); }
-    input[type=file] { color: var(--text-muted); font-size: 13px; }
 
-    button { background: var(--primary); color: #0a0a0a; border: none; padding: 10px 20px; border-radius: var(--radius); cursor: pointer; font-size: 13px; font-weight: 600; transition: background 0.15s; }
-    button:hover { background: var(--primary-hover); }
-    button:disabled { opacity: 0.45; cursor: not-allowed; }
-    .btn-large { padding: 14px 36px; font-size: 15px; }
-    .btn-secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
-    .btn-secondary:hover { background: var(--border); }
+    /* ── LAYOUT ─────────────────────────────────────────────────────────── */
+    .panel {
+      display: none;
+      min-height: calc(100vh - var(--tab-h));
+      padding: 16px 16px calc(var(--tab-h) + 16px);
+      overflow-y: auto;
+    }
+    .panel.active { display: block; }
+
+    /* ── TAB BAR ────────────────────────────────────────────────────────── */
+    #tab-bar {
+      position: fixed; bottom: 0; left: 0; right: 0; height: var(--tab-h);
+      display: flex; background: var(--surface);
+      border-top: 1px solid var(--border); z-index: 200;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .tab-btn {
+      flex: 1; background: none; border: none; color: var(--text-muted);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 3px; font-size: 11px; cursor: pointer; padding: 6px 0;
+      transition: color 0.15s; -webkit-tap-highlight-color: transparent;
+    }
+    .tab-btn.active { color: var(--primary); }
+    .tab-btn svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+
+    /* ── MSG BAR ────────────────────────────────────────────────────────── */
+    #msg {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--bg); padding: 8px 0;
+      min-height: 0; font-size: 14px;
+    }
+    #msg:empty { padding: 0; }
+
+    /* ── TYPOGRAPHY ─────────────────────────────────────────────────────── */
+    h2 { font-size: 18px; font-weight: 700; margin-bottom: 16px; color: var(--text); }
+    h3 { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin: 20px 0 8px; }
+    p { font-size: 15px; line-height: 1.6; }
+    .muted { color: var(--text-muted); font-size: 13px; }
+    .mono { font-family: var(--mono); font-size: 12px; }
+
+    /* ── STATUS CLASSES ─────────────────────────────────────────────────── */
+    .ok   { color: var(--success); }
+    .warn { color: var(--warning); }
+    .fail { color: var(--danger); }
+
+    /* ── BUTTONS ────────────────────────────────────────────────────────── */
+    button, .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-height: 44px; padding: 10px 18px;
+      border-radius: var(--radius); border: none; cursor: pointer;
+      font-size: 15px; font-family: inherit; font-weight: 500;
+      transition: background 0.15s, opacity 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn-primary, button[data-primary] {
+      background: var(--primary); color: #000;
+    }
+    .btn-primary:hover, button[data-primary]:hover { background: var(--primary-hover); }
+    .btn-primary:disabled, button:disabled { opacity: 0.4; cursor: default; }
+    .btn-secondary {
+      background: var(--surface-2); color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: #282828; }
+    .btn-block { width: 100%; margin-top: 10px; }
     .btn-danger { background: var(--danger); color: #fff; }
     .btn-danger:hover { background: #c84040; }
+    .btn-row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+    .btn-row button { flex: 1; }
 
-    .key-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
-    .key-card-header { display: flex; gap: 14px; align-items: center; margin-bottom: 14px; }
-    .identicon { border-radius: 4px; image-rendering: pixelated; flex-shrink: 0; }
-    .key-card-meta { flex: 1; min-width: 0; }
-    .key-name { font-size: 15px; font-weight: 600; }
-    .key-fp { font-family: var(--mono); font-size: 12px; color: var(--text-muted); margin-top: 3px; letter-spacing: 0.05em; }
-    .key-card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-    .key-card-actions button { font-size: 12px; padding: 6px 12px; }
+    /* ── FORMS ──────────────────────────────────────────────────────────── */
+    label { display: block; font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 6px; margin-top: 16px; }
+    label:first-child { margin-top: 0; }
+    input[type=text], select, textarea {
+      width: 100%; background: var(--surface-2); border: 1px solid var(--border);
+      color: var(--text); padding: 12px 14px; border-radius: var(--radius);
+      font-size: 16px; font-family: inherit; appearance: none;
+    }
+    input[type=text]:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); }
+    textarea { resize: vertical; min-height: 140px; line-height: 1.6; }
+    select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23666' stroke-width='1.5' fill='none'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; }
+    .form-hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 
-    .badge { display: inline-block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 6px; border-radius: 3px; margin-left: 6px; background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); vertical-align: middle; }
-    .badge-danger { background: rgba(224,80,80,0.15); color: var(--danger); border-color: rgba(224,80,80,0.4); }
-    .badge-primary { background: rgba(200,169,110,0.15); color: var(--primary); border-color: rgba(200,169,110,0.4); }
+    /* ── BADGES ─────────────────────────────────────────────────────────── */
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 4px;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.05em;
+      background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border);
+    }
+    .badge-primary { background: rgba(200,169,110,0.15); color: var(--primary); border-color: rgba(200,169,110,0.3); }
+    .badge-danger  { background: rgba(224,80,80,0.15);  color: var(--danger);  border-color: rgba(224,80,80,0.3); }
 
-    .confirm-banner { background: var(--surface); border: 1px solid var(--warning); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 20px; }
-    .confirm-banner h2 { margin-bottom: 4px; }
-    .confirm-warning { color: var(--warning); font-size: 13px; }
-    .render-preview { font-family: var(--mono); font-size: 12px; background: var(--surface); border: 1px solid var(--border); padding: 20px; border-radius: var(--radius); white-space: pre-wrap; word-break: break-word; max-height: 55vh; overflow-y: auto; margin-bottom: 24px; line-height: 1.65; color: var(--text); }
-    .confirm-actions { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
-    .cancel-link { font-size: 12px; color: var(--text-muted); text-decoration: none; }
-    .cancel-link:hover { color: var(--text); }
+    /* ── WIZARD ─────────────────────────────────────────────────────────── */
+    .wizard-steps { margin: 8px 0 24px; display: flex; flex-direction: column; gap: 12px; }
+    .step {
+      display: flex; gap: 14px; align-items: flex-start;
+      padding: 14px; border-radius: var(--radius);
+      background: var(--surface); border: 1px solid var(--border);
+    }
+    .step-num {
+      width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700; margin-top: 1px;
+    }
+    .step.current .step-num { background: var(--primary); color: #000; }
+    .step.done .step-num    { background: var(--success); color: #000; }
+    .step.pending .step-num { background: var(--surface-2); color: var(--text-muted); }
+    .step-body { flex: 1; }
+    .step-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+    .step.pending .step-title { color: var(--text-muted); }
+    .step.done    .step-title { color: var(--text-muted); text-decoration: line-through; }
+    .step-desc { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
+    .step.done  .step-desc { display: none; }
+    .step.pending .step-desc { display: none; }
 
-    .drop-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 48px 20px; text-align: center; color: var(--text-muted); margin-top: 12px; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
-    .drop-zone:hover, .drop-zone.drag-over { border-color: var(--primary); color: var(--text); }
+    /* ── HOME STATUS ────────────────────────────────────────────────────── */
+    .identity-card {
+      display: flex; gap: 16px; align-items: center;
+      padding: 16px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); margin-bottom: 20px;
+    }
+    canvas#home-identicon { border-radius: 8px; flex-shrink: 0; }
+    .identity-info { flex: 1; min-width: 0; }
+    .identity-name { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+    .identity-hash { font-family: var(--mono); font-size: 12px; color: var(--text-muted); word-break: break-all; }
+    .status-rows { display: flex; flex-direction: column; gap: 8px; }
+    .status-row { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+    .status-label { color: var(--text-muted); }
 
-    #results { margin-top: 28px; }
-    .result-item { margin-bottom: 6px; font-size: 13px; }
-    .verify-result { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; font-size: 13px; }
-    .verify-result div { padding: 3px 0; }
-    .verify-result .render-preview { margin-top: 16px; margin-bottom: 0; }
-    .ok { color: var(--success); }
-    .fail { color: var(--danger); font-weight: 600; }
-    .warn { color: var(--warning); }
-    .info { color: var(--text-muted); }
-    .mono { font-family: var(--mono); }
-    .muted { color: var(--text-muted); font-size: 13px; }
-    a { color: var(--primary); }
-    a:hover { color: var(--primary-hover); }
+    /* ── SOCIAL ─────────────────────────────────────────────────────────── */
+    .token-box {
+      font-family: var(--mono); font-size: 11px;
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px;
+      word-break: break-all; white-space: pre-wrap;
+      margin-top: 10px; user-select: all;
+      color: var(--primary);
+    }
+    .post-box {
+      font-family: var(--mono); font-size: 12px;
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px;
+      word-break: break-word; white-space: pre-wrap;
+      margin-top: 10px; user-select: all;
+    }
 
-    .settings-block { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
-    .settings-block p { font-size: 13px; color: var(--text-muted); margin-bottom: 12px; }
-    #passkey-status { font-size: 13px; margin-bottom: 14px; padding: 8px 12px; border-radius: var(--radius); background: var(--surface-2); }
+    /* ── DOCS ───────────────────────────────────────────────────────────── */
+    .artifact-card {
+      padding: 14px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); margin-bottom: 10px; cursor: pointer;
+      transition: border-color 0.15s; -webkit-tap-highlight-color: transparent;
+    }
+    .artifact-card:active { border-color: var(--primary); }
+    .artifact-summary { font-size: 14px; margin-bottom: 6px; }
+    .artifact-meta { display: flex; gap: 8px; align-items: center; font-size: 12px; }
 
-    .key-card-json { font-family: var(--mono); font-size: 11px; background: var(--surface-2); border: 1px solid var(--border); padding: 14px; border-radius: var(--radius); max-height: 220px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; cursor: pointer; }
-    .key-card-json:hover { border-color: var(--primary); }
+    .preview-box {
+      font-family: var(--mono); font-size: 12px;
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px;
+      white-space: pre-wrap; word-break: break-word;
+      margin: 12px 0; max-height: 260px; overflow-y: auto;
+    }
+    .seal-toggle {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); margin: 12px 0; cursor: pointer;
+    }
+    .seal-toggle input { width: 20px; height: 20px; cursor: pointer; accent-color: var(--primary); }
+    .seal-toggle-label { font-size: 14px; }
+    .seal-toggle-hint  { font-size: 12px; color: var(--text-muted); }
 
-    .empty-state { padding: 40px 0; text-align: center; color: var(--text-muted); font-size: 13px; }
-    .empty-state a { color: var(--primary); }
-
-    .no-webauthn { background: rgba(224,80,80,0.1); border: 1px solid rgba(224,80,80,0.3); border-radius: var(--radius); padding: 14px 16px; font-size: 13px; color: var(--danger); margin-bottom: 20px; }
-
-    .section-actions { display:flex; gap:8px; margin-bottom:4px; flex-wrap:wrap; }
-    .person-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px; margin-bottom:12px; }
-    .person-card-header { display:flex; gap:12px; align-items:center; margin-bottom:12px; }
-    .person-name { font-size:15px; font-weight:600; }
-    .person-key-count { font-size:11px; color:var(--text-muted); margin-top:2px; }
-    .key-entry { background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; margin-bottom:8px; }
-    .key-entry:last-child { margin-bottom:0; }
-    .key-entry.quarantined { border-color:rgba(224,80,80,0.4); background:rgba(224,80,80,0.05); }
-    .key-entry-header { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:6px; }
-    .key-entry-name { font-size:13px; font-weight:600; }
-    .key-entry-fp { font-family:var(--mono); font-size:11px; color:var(--text-muted); }
-    .key-entry-meta { font-size:11px; color:var(--text-muted); margin-bottom:6px; }
-    .key-entry-actions { display:flex; gap:6px; flex-wrap:wrap; }
-    .key-entry-actions button { font-size:11px; padding:4px 10px; }
-    .quarantine-label { font-size:11px; color:var(--danger); margin-top:2px; }
-    .person-picker { background:var(--surface); border:1px solid var(--primary); border-radius:var(--radius); padding:16px; margin-top:16px; }
-    .modal-overlay { position:fixed; inset:0; z-index:200; align-items:center; justify-content:center; }
-    .modal-backdrop { position:absolute; inset:0; background:rgba(0,0,0,0.75); }
-    .modal-box { position:relative; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px; max-width:340px; width:92%; text-align:center; box-shadow:var(--shadow); }
-    .modal-box h3 { margin-bottom:8px; font-size:15px; }
-    .modal-box p { font-size:12px; color:var(--text-muted); margin-bottom:16px; line-height:1.5; }
-    .modal-box .qr-wrap { display:flex; justify-content:center; margin-bottom:16px; }
-    .modal-box .qr-wrap > * { border-radius:4px; }
-    .fab { position:fixed; bottom:24px; right:20px; width:52px; height:52px; border-radius:50%; font-size:26px; font-weight:300; line-height:1; padding:0; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 16px rgba(0,0,0,0.5); z-index:50; }
-    .validate-result { margin-top:12px; font-size:13px; padding:10px 14px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface-2); }
+    /* ── KEYS ───────────────────────────────────────────────────────────── */
+    .key-item {
+      padding: 12px 14px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); margin-bottom: 8px;
+    }
+    .key-item.revoked { opacity: 0.5; }
+    .key-item-name { font-size: 14px; font-weight: 500; margin-bottom: 4px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .key-item-hash { font-family: var(--mono); font-size: 11px; color: var(--text-muted); margin-bottom: 8px; }
+    .key-item button { min-height: 36px; font-size: 13px; padding: 6px 14px; }
+    .import-area { padding: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 16px; }
   </style>
 </head>
 <body>
-<header>
-  <div class="brand">SSD</div>
-  <nav>
-    <button class="nav-btn active" data-section="documents" onclick="ui.showSection('docs')">Documents</button>
-    <button class="nav-btn" data-section="contacts" onclick="ui.showSection('contacts')">Contacts</button>
-    <button class="nav-btn" data-section="me" onclick="ui.showSection('keyring')">Me</button>
-  </nav>
-</header>
-<div id="webauthn-banner" style="display:none;background:var(--warning);color:#000;padding:10px 20px;font-size:13px;text-align:center;line-height:1.5">
-  Screen lock didn't respond in app mode.
-  <a id="webauthn-banner-link" href="" target="_blank" rel="noopener" style="color:#000;font-weight:700;text-decoration:underline">Open in browser instead</a>
-  — your documents and keys are the same in both.
-  <button onclick="app.retryWebAuthn()" style="margin-left:12px;font-size:11px;padding:3px 10px;background:rgba(0,0,0,0.2);color:#000;border:1px solid rgba(0,0,0,0.3)">Try again</button>
-</div>
-<main>
-  <!-- KEYRING -->
-  <section id="keyring" class="section">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:20px">
-      <h2 style="margin-bottom:0">My Keys</h2>
-      <button class="btn-secondary" style="font-size:12px;padding:6px 12px" onclick="ui.showSection('settings')">Passkey &amp; Devices</button>
-    </div>
-    <div id="keyring-list"></div>
-    <div id="validate-result" class="validate-result" style="display:none"></div>
-    <button class="fab" onclick="ui.showSection('newKey')" title="Add new key">+</button>
-  </section>
 
-  <!-- NEW KEY -->
-  <section id="newKey" class="section">
-    <h2>New Key</h2>
-    <div id="newkey-webauthn-warn" style="display:none" class="no-webauthn">
-      WebAuthn is required to protect your key. Please serve this app over HTTPS or localhost.
-    </div>
-    <div class="form-group">
-      <label>Key Name</label>
-      <input id="new-key-name" type="text" placeholder="e.g. D:Alice's Phone, O:Alice" maxlength="80">
-      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Prefix <strong>D:</strong> for a device key, <strong>O:</strong> for an owner key.</div>
-    </div>
-    <button onclick="app.createKey()">Generate Keypair</button>
-  </section>
+<!-- Message bar -->
+<div id="msg"></div>
 
-  <!-- COMPOSE -->
-  <section id="compose" class="section">
-    <h2 id="compose-heading">New Document</h2>
-    <div class="form-group">
-      <label>Signing Key</label>
-      <select id="compose-key-select"></select>
-    </div>
-    <div class="form-group">
-      <label>Document Text</label>
-      <textarea id="compose-text" placeholder="Write your document here…"></textarea>
-    </div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button onclick="app.previewSign()">Review →</button>
-      <button class="btn-secondary" onclick="app.saveDraft()">Save</button>
-    </div>
-  </section>
+<!-- ── HOME ─────────────────────────────────────────────────────────────── -->
+<div id="panel-home" class="panel active">
+  <h2>Home</h2>
 
-  <!-- SIGN CONFIRMATION -->
-  <section id="signConfirm" class="section">
-    <div class="confirm-banner">
-      <h2>This is exactly what you are signing.</h2>
-      <p class="confirm-warning">Once confirmed, this cannot be changed.</p>
-    </div>
-    <pre id="confirm-render" class="render-preview"></pre>
-    <div class="confirm-actions">
-      <button class="btn-large" onclick="app.confirmSign()">Sign</button>
-      <a href="#" class="cancel-link" onclick="ui.showSection('compose');return false;">Cancel</a>
-    </div>
-  </section>
+  <!-- Wizard (hidden when complete) -->
+  <div id="home-wizard">
+    <p class="muted" style="margin-bottom:16px">Set up your signing identity to get started.</p>
+    <div class="wizard-steps">
 
-  <!-- SEAL -->
-  <section id="seal" class="section">
-    <h2>Seal this document?</h2>
-    <p class="muted" style="margin-bottom:16px">Your document is signed. Optionally encrypt it for specific people — only they will be able to read it.</p>
-    <div id="seal-recipient-list"></div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:20px">
-      <button onclick="app.doDeliver()">Deliver</button>
-    </div>
-    <div style="margin-top:14px">
-      <a href="#" class="cancel-link" onclick="app.cancelSeal();return false;">Cancel — start over</a>
-    </div>
-  </section>
-
-  <!-- DELIVER -->
-  <section id="deliver" class="section">
-    <h2>Deliver</h2>
-    <div id="deliver-info" class="settings-block" style="margin-bottom:20px"></div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button onclick="app.downloadDelivery()">Download</button>
-      <button id="deliver-share-btn" class="btn-secondary" onclick="app.shareDelivery()" style="display:none">Share…</button>
-    </div>
-    <div style="margin-top:16px">
-      <a href="#" class="cancel-link" onclick="ui.showSection('docs');return false;">Done</a>
-    </div>
-  </section>
-
-  <!-- OPEN (formerly Verify) -->
-  <section id="verify" class="section">
-    <h2>Open a document</h2>
-    <div class="form-group">
-      <label>Select .ssd file</label>
-      <input id="verify-file" type="file" accept=".ssd" onchange="if(this.files[0])app.verifyArtifact(this.files[0])">
-    </div>
-    <div id="verify-drop" class="drop-zone"
-         ondragover="event.preventDefault();this.classList.add('drag-over')"
-         ondragleave="this.classList.remove('drag-over')"
-         ondrop="app.handleDrop(event)"
-         onclick="document.getElementById('verify-file').click()">
-      Drop a .ssd file here, or click to select
-    </div>
-  </section>
-
-  <!-- SOCIAL SIGN -->
-  <section id="socialSign" class="section">
-    <h2 id="social-sign-heading">Social Post</h2>
-    <div class="form-group">
-      <label>Signing Key</label>
-      <select id="social-key-select" onchange="app.onSocialKeyChange()"></select>
-    </div>
-    <div class="form-group">
-      <label>Identity hint</label>
-      <input id="social-identity" type="text" placeholder="e.g. fb:alicesmith or https://example.com/key.json">
-      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Tells readers where to find your key. Platform handle (fb:, tw:, li:) or key URL.</div>
-    </div>
-    <div class="form-group">
-      <label>Post text</label>
-      <textarea id="social-text" placeholder="Write your post here…"></textarea>
-    </div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-      <button onclick="app.previewSocialSign()">Review →</button>
-      <button class="btn-secondary" onclick="app.saveSocialDraft()">Save &amp; close</button>
-    </div>
-  </section>
-
-  <!-- SOCIAL CONFIRM -->
-  <section id="socialConfirm" class="section">
-    <div class="confirm-banner">
-      <h2>This is exactly what you are signing.</h2>
-      <p style="font-size:13px;color:var(--text-muted)">The token will be appended when you post. You can come back to this from the Documents tab.</p>
-    </div>
-    <p id="social-confirm-blanks-note" class="warn" style="display:none">
-      Multiple consecutive blank lines were collapsed to one — social platforms do not preserve them.
-    </p>
-    <pre id="social-confirm-render" class="render-preview"></pre>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-      <button class="btn-large" onclick="app.confirmSocialSign()">Sign →</button>
-      <button class="btn-secondary" onclick="app.saveSocialAtConfirm()">Save &amp; close</button>
-      <a href="#" class="cancel-link" onclick="ui.showSection('socialSign');return false;">← Edit</a>
-    </div>
-  </section>
-
-  <!-- SOCIAL RESULT -->
-  <section id="socialResult" class="section">
-    <h2>Signed — ready to post</h2>
-    <p class="muted" style="margin-bottom:16px">Copy this and paste it into your post. Come back here any time from the Documents tab.</p>
-    <pre id="social-result-text" class="render-preview" style="cursor:pointer" title="Click to copy" onclick="app.copySocialPost()"></pre>
-    <div id="social-copy-status" style="margin-top:8px;font-size:12px;min-height:16px"></div>
-    <div id="social-result-reply-block" style="display:none;margin-top:20px">
-      <p class="muted" style="margin-bottom:8px">Self-reply with this token</p>
-      <pre id="social-result-reply-text" class="render-preview" style="cursor:pointer" title="Click to copy" onclick="app.copyTweetReply()"></pre>
-      <div id="social-reply-copy-status" style="margin-top:8px;font-size:12px;min-height:16px"></div>
-    </div>
-    <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-      <button onclick="app.copySocialPost()">Copy to clipboard</button>
-      <button id="social-reply-copy-btn" style="display:none" onclick="app.copyTweetReply()">Copy reply token</button>
-      <button class="btn-secondary" onclick="app.markSocialPosted()">Mark as posted</button>
-      <a href="#" class="cancel-link" onclick="ui.showSection('docs');return false;">Done</a>
-    </div>
-  </section>
-
-  <!-- SOCIAL VERIFY -->
-  <section id="socialVerify" class="section">
-    <h2>Verify a post</h2>
-    <p class="muted" style="margin-bottom:16px">Paste any signed post — from email, WhatsApp, or anywhere — to check its signature.</p>
-    <div class="form-group">
-      <label>Post text (including the [SSD:…] token)</label>
-      <textarea id="social-verify-text" placeholder="Paste the full post here, including the token at the end…" style="min-height:180px"></textarea>
-    </div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-      <button onclick="app.verifySocialPost()">Verify</button>
-      <a href="#" class="cancel-link" onclick="ui.showSection('docs');return false;">Cancel</a>
-    </div>
-    <div id="social-verify-result" style="margin-top:20px"></div>
-  </section>
-
-  <!-- DOCUMENTS -->
-  <section id="docs" class="section active">
-    <h2>Documents</h2>
-    <div class="section-actions" style="margin-bottom:20px">
-      <button onclick="app.newDocument()">New document</button>
-      <button class="btn-secondary" onclick="app.startSocialSign()">New post</button>
-      <button class="btn-secondary" onclick="ui.showSection('socialVerify')">Verify a post</button>
-      <button class="btn-secondary" onclick="ui.showSection('verify')">Open .ssd file</button>
-    </div>
-    <div id="docs-list"></div>
-  </section>
-
-  <!-- SETTINGS -->
-  <section id="settings" class="section">
-    <h2>Settings</h2>
-    <div class="settings-block">
-      <h3>Passkey</h3>
-      <div id="passkey-status">Checking…</div>
-      <!-- shown when no passkey registered -->
-      <div id="passkey-register-ui">
-        <div class="form-group" style="margin-top:14px">
-          <label>Name (identifies this credential in your passkey manager)</label>
-          <input id="passkey-label" type="text" value="SSD Keyring" maxlength="60">
-        </div>
-        <button onclick="app.registerPasskey()">Register Passkey</button>
-      </div>
-      <!-- shown when passkey already registered -->
-      <div id="passkey-replace-ui" style="display:none;margin-top:14px">
-        <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">
-          Replacing your passkey will permanently destroy all signing keys stored in this browser.
-          They cannot be recovered. Only do this if you intend to start fresh.
-        </p>
-        <button class="btn-danger" onclick="app.clearPasskey()">Clear passkey and all keys…</button>
-      </div>
-    </div>
-    <div class="settings-block">
-      <h3>Encryption Key</h3>
-      <div id="enc-key-status" style="font-size:13px;margin-bottom:12px;padding:8px 12px;border-radius:var(--radius);background:var(--surface-2)">Checking…</div>
-      <div id="enc-key-generate-ui" style="display:none">
-        <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">No encryption key yet. Generate one so contacts can send you encrypted documents.</p>
-        <button onclick="app.generateEncryptionKey()">Generate Encryption Key</button>
-      </div>
-      <div id="enc-key-reset-ui" style="display:none;margin-top:10px">
-        <button class="btn-secondary" onclick="app.resetEncryptionKey()" style="color:var(--danger)">Replace broken key…</button>
-      </div>
-    </div>
-    <div class="settings-block">
-      <h3>Devices</h3>
-      <div class="form-group">
-        <label>This device's name</label>
-        <div style="display:flex;gap:8px">
-          <input id="device-name-input" type="text" placeholder="e.g. My Phone" maxlength="60" style="flex:1">
-          <button class="btn-secondary" onclick="app.saveDeviceName()">Save</button>
+      <div id="wz-1" class="step current">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Register passkey</div>
+          <div class="step-desc">Your passkey protects your private keys. Use Android Chrome with biometric unlock.</div>
+          <button class="btn-primary" id="wz-btn-1" onclick="app.registerPasskey()">Set up passkey</button>
         </div>
       </div>
-    </div>
-    <div class="settings-block" id="pin-fallback-block">
-      <h3>PIN Fallback <span class="badge badge-danger">Dev only</span></h3>
-      <p style="color:var(--warning);font-size:12px;margin-bottom:10px">⚠ Replaces passkey hardware-bound encryption with a password. Keys created while enabled are NOT protected by your biometric. Disable to restore the secure model — you will need to create fresh keys.</p>
-      <div id="pin-fallback-status" style="font-size:13px;margin-bottom:10px">Checking…</div>
-      <div id="pin-fallback-enable-ui" style="display:none">
-        <div class="form-group">
-          <label>4-digit PIN</label>
-          <input type="password" id="pin-setup-input" placeholder="0000" maxlength="4" inputmode="numeric" pattern="\d{4}" autocomplete="new-password">
-        </div>
-        <button onclick="app.enablePinFallback()">Enable PIN fallback</button>
-      </div>
-      <div id="pin-fallback-disable-ui" style="display:none">
-        <button class="btn-danger" onclick="app.disablePinFallback()">Disable PIN fallback</button>
-      </div>
-    </div>
-    <div class="settings-block">
-      <h3>Factory Reset</h3>
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Wipes all data on this device: keys, contacts, documents, and settings. Use this to start completely fresh. Downloaded <code>.ssd</code> files are not affected.</p>
-      <button class="btn-danger" onclick="app.factoryReset()">Wipe all data…</button>
-    </div>
-    <div class="settings-block">
-      <h3>About</h3>
-      <p style="margin-bottom:8px">Signed, Sealed, Delivered &mdash; <span id="about-version" class="mono"></span></p>
-      <p style="margin-bottom:8px">Certificate-grade document signing and verification. Sign documents with your passkey, share your public key card, and verify that a document has not been altered since it was signed.</p>
-      <p style="color:var(--text-muted);font-size:13px">All cryptography runs in your browser using the WebCrypto API. Nothing sensitive ever leaves this device. No server. No account. No cloud.</p>
-      <p style="margin-top:12px;color:var(--text-muted);font-size:13px">&copy; <a href="https://idltd.com" style="color:inherit">IDLTD</a></p>
-    </div>
-  </section>
 
-  <!-- CONTACTS -->
-  <section id="contacts" class="section">
-    <h2>Contacts</h2>
-    <div class="section-actions">
-      <button onclick="app.showPasteImport()">+ Import key card</button>
-      <button class="btn-secondary" onclick="app.startQRScan()">Scan QR</button>
-    </div>
-    <div id="paste-import-area" style="display:none;margin-top:16px">
-      <div class="form-group">
-        <label>Paste key card JSON</label>
-        <textarea id="paste-import-text" style="min-height:100px;font-size:12px" placeholder='{"version":"1.0","name":"Alice",...}'></textarea>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button onclick="app.doImportPaste()">Import</button>
-        <a href="#" class="cancel-link" onclick="app.hidePasteImport();return false">Cancel</a>
-      </div>
-    </div>
-    <div id="person-picker" class="person-picker" style="display:none">
-      <h3 style="margin-bottom:4px;font-size:13px">Who is this key from?</h3>
-      <div id="person-picker-key-info" style="font-size:12px;color:var(--text-muted);margin-bottom:12px"></div>
-      <div id="person-picker-existing" style="display:none">
-        <div class="form-group">
-          <label>Link to existing contact</label>
-          <select id="person-picker-select" onchange="app._onPersonPickerSelect()">
-            <option value="">— Add as new person —</option>
-          </select>
+      <div id="wz-2" class="step pending">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Create your identity</div>
+          <div class="step-desc">Generates your owner (O:) and device (D:) signing keys.</div>
+          <button class="btn-primary" id="wz-btn-2" onclick="app.ensureIdentity()" disabled>Create identity</button>
         </div>
       </div>
-      <div class="form-group" id="person-picker-name-group">
-        <label id="person-picker-name-label">Their name</label>
-        <input id="person-picker-name" type="text" placeholder="What do you call this person?">
-      </div>
-      <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
-        <button onclick="app.confirmPersonPick()">Add to contacts</button>
-        <a href="#" class="cancel-link" onclick="app.cancelPersonPick();return false">Cancel</a>
-      </div>
-    </div>
-    <div id="contacts-list" style="margin-top:20px"></div>
-    <div id="quarantine-toggle-bar" style="display:none;margin-top:28px">
-      <button class="btn-secondary" id="quarantine-toggle-btn" onclick="app.toggleQuarantine()">Show quarantined keys</button>
-    </div>
-    <div id="quarantine-list" style="display:none;margin-top:12px"></div>
-  </section>
 
-  <!-- QR DISPLAY MODAL -->
-  <div id="qr-modal" class="modal-overlay" style="display:none">
-    <div class="modal-backdrop" onclick="app.closeQRModal()"></div>
-    <div class="modal-box">
-      <h3 id="qr-modal-title"></h3>
-      <p id="qr-modal-desc"></p>
-      <div class="qr-wrap"><div id="qr-canvas"></div></div>
-      <div id="qr-cycle-wrap" style="display:none;margin-bottom:10px;font-size:12px;color:var(--text-muted);text-align:center">
-        <span id="qr-cycle-dots"></span>
+      <div id="wz-3" class="step pending">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Share your beacon</div>
+          <div class="step-desc">Paste your SSDKEY beacon into your social media bio so others can find your key.</div>
+          <button class="btn-primary" id="wz-btn-3" onclick="app.shareBeacon()" disabled>Copy beacon</button>
+        </div>
       </div>
-      <div id="qr-wrong-btn-wrap" style="display:none;margin-bottom:12px">
-        <button class="btn-danger" id="qr-wrong-btn">That's not my key</button>
-      </div>
-      <button class="btn-secondary" onclick="app.closeQRModal()">Close</button>
+
     </div>
   </div>
 
-  <!-- SEALED RECIPIENTS MODAL -->
-  <div id="recipients-modal" class="modal-overlay" style="display:none">
-    <div class="modal-backdrop" onclick="app.closeRecipientsModal()"></div>
-    <div class="modal-box">
-      <h3>Sealed for</h3>
-      <div id="recipients-modal-list" style="margin:12px 0"></div>
-      <button class="btn-secondary" onclick="app.closeRecipientsModal()">Close</button>
-    </div>
-  </div>
-
-  <!-- KEY TRANSFER MODAL -->
-  <div id="transfer-key-modal" class="modal-overlay" style="display:none">
-    <div class="modal-backdrop" onclick="app.closeTransferModal()"></div>
-    <div class="modal-box">
-      <h3>Transfer key to device</h3>
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">The transfer will be signed by your device key and sealed — only the chosen device can open it.</p>
-      <div class="form-group">
-        <label>Destination device</label>
-        <select id="transfer-key-contact-select"></select>
-      </div>
-      <div id="transfer-key-warn" style="display:none;color:var(--danger);font-size:13px;margin-top:8px"></div>
-      <div style="display:flex;gap:8px;margin-top:16px">
-        <button id="transfer-key-confirm-btn" onclick="app.confirmTransferKey()">Transfer</button>
-        <button class="btn-secondary" onclick="app.closeTransferModal()">Cancel</button>
+  <!-- Status (hidden when wizard not done) -->
+  <div id="home-status" style="display:none">
+    <div class="identity-card">
+      <canvas id="home-identicon" width="64" height="64"></canvas>
+      <div class="identity-info">
+        <div class="identity-name" id="home-okey-name">—</div>
+        <div class="identity-hash" id="home-hash8">—</div>
       </div>
     </div>
-  </div>
-
-  <!-- QR SCAN MODAL -->
-  <div id="scan-modal" class="modal-overlay" style="display:none">
-    <div class="modal-backdrop"></div>
-    <div class="modal-box">
-      <h3>Scan Key Card</h3>
-      <p id="scan-status">Point your camera at a key card QR code.</p>
-      <video id="scan-video" autoplay playsinline style="width:100%;border-radius:4px;margin:12px 0;background:#000"></video>
-      <canvas id="scan-canvas" style="display:none"></canvas>
-      <button class="btn-secondary" onclick="app.stopQRScan()">Cancel</button>
+    <div class="status-rows">
+      <div class="status-row">
+        <span class="status-label">Passkey</span>
+        <span id="home-passkey-status" class="ok">—</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Device key</span>
+        <span id="home-dkey-status">—</span>
+      </div>
+    </div>
+    <div style="margin-top:20px">
+      <button class="btn-secondary btn-block" onclick="app.shareBeacon()">Copy SSDKEY beacon</button>
     </div>
   </div>
-
-  <div id="results"></div>
-</main>
-
-<!-- MOCK MODE PANEL -->
-<div id="mock-panel" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#12082a;border-top:1px solid #5a3a8e;padding:8px 16px;z-index:150;align-items:center;gap:10px;flex-wrap:wrap">
-  <span style="font-size:11px;color:#9b6fd4;font-weight:700;text-transform:uppercase;letter-spacing:0.1em">Mock</span>
-  <button onclick="test.setup('Alice')" style="font-size:11px;padding:4px 10px">Setup Alice</button>
-  <button onclick="test.setup('Bob')" style="font-size:11px;padding:4px 10px">Setup Bob</button>
-  <button class="btn-secondary" onclick="test.copyKeyCard()" style="font-size:11px;padding:4px 10px">Copy key card</button>
-  <button class="btn-secondary" onclick="test.pasteKeyCard()" style="font-size:11px;padding:4px 10px">Paste &amp; import</button>
-  <span id="mock-status" style="font-size:11px;color:#9b6fd4;margin-left:auto"></span>
 </div>
 
+<!-- ── SOCIAL ────────────────────────────────────────────────────────────── -->
+<div id="panel-social" class="panel">
+  <h2>Social</h2>
+
+  <div id="social-compose">
+    <label>Signing key</label>
+    <select id="social-key-select" onchange="app._prefillIdentity()"></select>
+
+    <label>Your identity <span class="form-hint" style="display:inline">(platform:handle, e.g. fb:profile/alice)</span></label>
+    <input type="text" id="social-identity" placeholder="fb:profile/username" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+
+    <label>Post text</label>
+    <textarea id="social-text" placeholder="Write your post…" rows="7"></textarea>
+
+    <button class="btn-primary btn-block" onclick="app.signSocial()" style="margin-top:14px">Sign post</button>
+  </div>
+
+  <div id="social-result" style="display:none">
+    <p class="muted" style="margin-bottom:12px">Signed post — copy and paste into your social platform:</p>
+    <div class="post-box" id="social-full-post"></div>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="app.copySocialPost()">Copy post</button>
+      <button class="btn-secondary" onclick="app.copySocialToken()">Copy token only</button>
+    </div>
+    <h3>Token</h3>
+    <div class="token-box" id="social-token-display"></div>
+    <button class="btn-secondary btn-block" onclick="app.newSocialPost()" style="margin-top:16px">New post</button>
+  </div>
+</div>
+
+<!-- ── DOCS ──────────────────────────────────────────────────────────────── -->
+<div id="panel-docs" class="panel">
+
+  <!-- List view -->
+  <div id="docs-list">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h2 style="margin:0">Docs</h2>
+      <button class="btn-primary" style="min-height:38px;font-size:14px;padding:8px 16px" onclick="app.newDoc()">+ New</button>
+    </div>
+    <div id="docs-artifact-list"></div>
+  </div>
+
+  <!-- Compose view -->
+  <div id="docs-compose" style="display:none">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <button class="btn-secondary" style="min-height:36px;font-size:14px;padding:8px 14px" onclick="app.loadDocs()">← Back</button>
+      <h2 style="margin:0">New document</h2>
+    </div>
+    <label>Document text</label>
+    <textarea id="docs-text" placeholder="Enter your document content…" rows="10"></textarea>
+    <label>Sign with</label>
+    <select id="docs-key-select"></select>
+    <button class="btn-primary btn-block" onclick="app.previewDoc()" style="margin-top:14px">Preview & Sign</button>
+  </div>
+
+  <!-- Preview / confirm view -->
+  <div id="docs-preview" style="display:none">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <button class="btn-secondary" style="min-height:36px;font-size:14px;padding:8px 14px" onclick="app._showDocsView('docs-compose')">← Back</button>
+      <h2 style="margin:0">Review</h2>
+    </div>
+    <p class="muted" style="margin-bottom:8px">This is exactly what will be signed:</p>
+    <div class="preview-box" id="docs-preview-text"></div>
+    <label for="docs-seal-self-check" class="seal-toggle" style="margin-top:0">
+      <input type="checkbox" id="docs-seal-self-check">
+      <div>
+        <div class="seal-toggle-label">Seal for myself</div>
+        <div class="seal-toggle-hint">Encrypts the document — only you can open it</div>
+      </div>
+    </label>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="app.signDoc()">Sign &amp; Save</button>
+      <button class="btn-secondary" onclick="app.loadDocs()">Cancel</button>
+    </div>
+  </div>
+
+  <!-- View artifact -->
+  <div id="docs-view" style="display:none">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <button class="btn-secondary" style="min-height:36px;font-size:14px;padding:8px 14px" onclick="app.loadDocs()">← Back</button>
+      <div id="docs-view-meta" style="display:flex;gap:8px;align-items:center"></div>
+    </div>
+    <div class="preview-box" id="docs-view-content" style="max-height:none"></div>
+    <button class="btn-secondary btn-block" onclick="app.downloadArtifact()" style="margin-top:14px">Download .ssd</button>
+  </div>
+</div>
+
+<!-- ── KEYS ──────────────────────────────────────────────────────────────── -->
+<div id="panel-keys" class="panel">
+  <h2>Keys</h2>
+
+  <!-- Beacon share -->
+  <h3>Your beacon</h3>
+  <div id="keys-beacon-list"></div>
+
+  <!-- Import -->
+  <h3>Import a key</h3>
+  <div class="import-area">
+    <label style="margin-top:0">Paste an SSDKEY beacon or key card JSON</label>
+    <textarea id="keys-import-text" rows="3" placeholder="[SSDKEY:…] or {…}" style="font-size:13px;font-family:var(--mono)"></textarea>
+    <button class="btn-primary btn-block" onclick="app.importKey()" style="margin-top:10px">Import key</button>
+  </div>
+
+  <!-- My keys -->
+  <h3>My keys</h3>
+  <div id="keys-my-list"></div>
+
+  <!-- Contact keys -->
+  <h3>Imported keys</h3>
+  <div id="keys-contact-list"></div>
+
+  <!-- Factory Reset -->
+  <div style="margin-top:32px;border-top:1px solid var(--border);padding-top:20px">
+    <h3>Factory reset</h3>
+    <p class="muted">Wipes all local data on this device — keys, contacts, documents, and settings. Downloaded .ssd files are not affected.</p>
+    <button class="btn-danger btn-block" onclick="app.factoryReset()">Wipe all data…</button>
+  </div>
+</div>
+
+<!-- ── TAB BAR ───────────────────────────────────────────────────────────── -->
+<nav id="tab-bar">
+  <button class="tab-btn active" id="tab-home-btn" onclick="app.tab('home')">
+    <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    Home
+  </button>
+  <button class="tab-btn" id="tab-social-btn" onclick="app.tab('social')">
+    <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+    Social
+  </button>
+  <button class="tab-btn" id="tab-docs-btn" onclick="app.tab('docs')">
+    <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+    Docs
+  </button>
+  <button class="tab-btn" id="tab-keys-btn" onclick="app.tab('keys')">
+    <svg viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+    Keys
+  </button>
+</nav>
+
+<!-- ── SCRIPTS ───────────────────────────────────────────────────────────── -->
 <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"
         crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
-// Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v61';
+const APP_VERSION = 'ssd-v62';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
-const log = (...a) => console.log('[SSD]', ...a);
+const log = (...a) => console.log('[SSD-basic]', ...a);
 </script>
 <script src="db.js"></script>
 <script src="cryptoOps.js"></script>
@@ -541,7 +442,6 @@ const log = (...a) => console.log('[SSD]', ...a);
 <script src="signer-engines.js"></script>
 <script>
 'use strict';
-
 
 // ─── OPFS STORE ───────────────────────────────────────────────────────────────
 const opfsStore = {
@@ -590,43 +490,29 @@ const opfsStore = {
   },
 };
 
-
-
-
 // ─── IDENTICON ───────────────────────────────────────────────────────────────
 const identicon = {
-  algorithmId: () => 'ssd-identicon-1.0',
-
   render(seed, canvas, size = 64) {
     const ctx = canvas.getContext('2d');
     canvas.width = size; canvas.height = size;
     ctx.clearRect(0, 0, size, size);
-
-    // 15 unique cells (3 cols × 5 rows), mirrored to 5×5
     const bits = [];
     for (let i = 0; i < 15; i++) bits.push((seed[Math.floor(i / 8)] >> (7 - (i % 8))) & 1);
-
     const grid = [];
     for (let r = 0; r < 5; r++) {
       const row = [];
-      for (let c = 0; c < 5; c++) {
-        const mc = c > 2 ? 4 - c : c;
-        row.push(bits[r * 3 + mc]);
-      }
+      for (let c = 0; c < 5; c++) { const mc = c > 2 ? 4 - c : c; row.push(bits[r * 3 + mc]); }
       grid.push(row);
     }
-
     const hue = Math.floor((seed[16] / 255) * 360);
     const sat = 45 + Math.floor((seed[17] / 255) * 30);
     const lig = 40 + Math.floor((seed[18] / 255) * 25);
     ctx.fillStyle = `hsl(${hue},${sat}%,${lig}%)`;
-
     const cell = size / 5;
     for (let r = 0; r < 5; r++) for (let c = 0; c < 5; c++) {
       if (grid[r][c]) ctx.fillRect(c * cell, r * cell, cell, cell);
     }
   },
-
   renderToDataURL(seed, size = 64) {
     const c = document.createElement('canvas');
     this.render(seed, c, size);
@@ -634,461 +520,319 @@ const identicon = {
   },
 };
 
-// ─── UI ───────────────────────────────────────────────────────────────────────
-const ui = {
-  showSection(id) {
-    const NAV_PARENT = {
-      docs: 'documents', compose: 'documents', signConfirm: 'documents', seal: 'documents', deliver: 'documents', verify: 'documents',
-      socialSign: 'documents', socialConfirm: 'documents', socialResult: 'documents', socialVerify: 'documents',
-      contacts: 'contacts',
-      keyring: 'me', newKey: 'me', settings: 'me',
-    };
-    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-    const sec = document.getElementById(id);
-    if (sec) sec.classList.add('active');
-    const navKey = NAV_PARENT[id] || id;
-    const btn = document.querySelector(`[data-section="${navKey}"]`);
-    if (btn) btn.classList.add('active');
-    this.clear();
-    if (id === 'keyring')    app.loadKeyring();
-    if (id === 'contacts')   app.loadContacts();
-    if (id === 'compose')    app.loadComposeKeys();
-    if (id === 'docs')       app.loadDocs();
-    if (id === 'socialSign') app.loadSocialKeys();
-    if (id === 'socialVerify') { document.getElementById('social-verify-text').value = ''; document.getElementById('social-verify-result').innerHTML = ''; }
-    if (id === 'seal')      app.loadSealRecipients();
-    if (id === 'deliver')   app.loadDeliver();
-    if (id === 'settings')  { app.checkPasskeyStatus(); app.checkEncryptionKeyStatus(); app.loadDevicesSection(); app.checkPinFallbackStatus(); }
-  },
-  display(html) {
-    const r = document.getElementById('results');
-    const d = document.createElement('div');
-    d.className = 'result-item';
-    d.innerHTML = html;
-    r.appendChild(d);
-  },
-  clear() { document.getElementById('results').innerHTML = ''; },
-  displayVerification(result, sealStatus) {
-    const ok = v => v ? '<span class="ok">✓</span>' : '<span class="fail">✗</span>';
-    let h = '<div class="verify-result">';
-    h += `<div>${ok(result.signature_valid)} Signature ${result.signature_valid ? 'valid' : '<strong>INVALID</strong>'}</div>`;
-    h += `<div>${ok(result.content_unmodified)} Content ${result.content_unmodified ? 'unmodified' : '<strong>MODIFIED</strong>'}</div>`;
-    if (result.signed_at) {
-      const d = new Date(result.signed_at).toISOString().replace('T', ' ').slice(0, 16);
-      h += `<div class="ok">✓ Signed: ${d} UTC &nbsp;[${result.render_spec}]</div>`;
-    }
-    if (result.signer_hash8) {
-      const who = result.signer_known ? ` — ${result.signer_name} (${result.trust_types.join(', ')})` : ' (unknown)';
-      const cls = result.signer_known ? 'info' : 'warn';
-      h += `<div class="${cls}">◎ Key: <span class="mono">${result.signer_hash8}</span>${who}</div>`;
-    }
-    if (sealStatus?.state === 'opened') {
-      h += `<div class="ok">✓ Sealed — opened as «${sealStatus.identity}»</div>`;
-    } else {
-      h += `<div class="ok">✓ Not sealed (public)</div>`;
-    }
-    for (const w of result.warnings) h += `<div class="warn">⚠ ${w}</div>`;
-    for (const e of result.errors)   h += `<div class="fail">✗ ${e}</div>`;
-    h += '</div>';
-    this.display(h);
-  },
-};
-
-// ─── MOCK ────────────────────────────────────────────────────────────────────
-function installMockPasskey() {
-  const mockPrfBytes = window.crypto.getRandomValues(new Uint8Array(32));
-
-  passkey.register = async function(_label) {
-    await db.put('settings', { key: 'credential_id', value: 'mock-cred' });
-    await db.put('settings', { key: 'prf_supported', value: true });
-    return { credIdB64: 'mock-cred', prfSupported: true };
-  };
-
-  passkey.authenticate = async function() {
-    const prfKey = await window.crypto.subtle.importKey('raw', mockPrfBytes, { name: 'HKDF' }, false, ['deriveKey']);
-    const aesKey = await window.crypto.subtle.deriveKey(
-      { name: 'HKDF', hash: 'SHA-256', salt: new TextEncoder().encode('ssd-keyring-v1'), info: new TextEncoder().encode('private-key-encryption') },
-      prfKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
-    );
-    return { aesKey };
-  };
-
-  passkey.confirmAndSign = async function(privateKey, dataBytes) {
-    return cryptoOps.sign(privateKey, dataBytes);
-  };
-}
-
-const test = {
-  async setup(name) {
-    ui.clear();
-    document.getElementById('mock-status').textContent = `Setting up ${name}…`;
-    try {
-      document.getElementById('passkey-label').value = name;
-      await app.registerPasskey();
-      document.getElementById('new-key-name').value = name;
-      await app.createKey();
-      await app.generateEncryptionKey();
-      document.getElementById('mock-status').textContent = `Ready as ${name}`;
-    } catch(e) {
-      document.getElementById('mock-status').textContent = `Setup failed: ${e.message}`;
-    }
-  },
-
-  async copyKeyCard() {
-    const keys = await db.getAll('my_keys');
-    if (!keys.length) { ui.display('<span class="fail">No key — run Setup first</span>'); return; }
-    try {
-      await keyring.ensureUnlocked();
-      const card = await keyring.exportKeyCard(keys[0].id);
-      await navigator.clipboard.writeText(JSON.stringify(card));
-      ui.display('<div class="ok">✓ Key card copied to clipboard</div>');
-    } catch(e) {
-      ui.display(`<span class="fail">Export failed: ${e.message}</span>`);
-    }
-  },
-
-  async pasteKeyCard() {
-    try {
-      const text = await navigator.clipboard.readText();
-      if (!text.trim()) { ui.display('<span class="fail">Clipboard is empty</span>'); return; }
-      const card = JSON.parse(text);
-      ui.showSection('contacts');
-      await app.importContactCard(card, 'paste');
-    } catch(e) {
-      ui.display(`<span class="fail">Import failed: ${e.message}</span>`);
-    }
-  },
-};
-
 // ─── APP ─────────────────────────────────────────────────────────────────────
 const app = {
-  _sigCtx: null,
-  _scanStream: null,
-  _scanInterval: null,
-  _qrCycleInterval: null,
-  _pendingPairing: null,
+  _sigCtx:      null,
+  _deliverBytes: null,
+  _deliverFilename: null,
+  _lastSocialPost: null,
+  _viewArtifactId: null,
 
   async init() {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' }).catch(console.warn);
     }
+    await this.refreshHome();
+  },
 
-    if (MOCK_MODE) {
-      installMockPasskey();
-      document.getElementById('mock-panel').style.display = 'flex';
-      document.body.classList.add('mock-mode');
-    }
+  async tab(name) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById(`panel-${name}`).classList.add('active');
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(`tab-${name}-btn`).classList.add('active');
+    this.clearMsg();
+    if (name === 'home')   await this.refreshHome();
+    if (name === 'social') await this.loadSocialKeys();
+    if (name === 'docs')   await this.loadDocs();
+    if (name === 'keys')   await this.loadKeys();
+  },
 
-    const vEl = document.getElementById('about-version');
-    if (vEl) vEl.textContent = APP_VERSION;
+  msg(html) { document.getElementById('msg').innerHTML = html; },
+  clearMsg() { document.getElementById('msg').innerHTML = ''; },
 
-    // Check secure context
-    if (!window.isSecureContext) {
-      const warn = document.createElement('div');
-      warn.className = 'no-webauthn';
-      warn.style.margin = '0 20px 0';
-      warn.textContent = '⚠ WebAuthn requires a secure context. Serve this app via HTTPS or localhost.';
-      document.querySelector('header').after(warn);
-    }
+  _esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  },
 
-    // Check Ed25519 support
-    try {
-      await window.crypto.subtle.generateKey({ name: 'Ed25519' }, false, ['sign', 'verify']);
-    } catch {
-      ui.display('<span class="fail">✗ Ed25519 not supported in this browser. Please use Chrome 113+, Firefox 130+, or Safari 17+.</span>');
-    }
+  // ── HOME ──────────────────────────────────────────────────────────────────
 
-    // Show persistent banner if WebAuthn previously timed out on this device
-    try {
-      const unreliable = await db.get('settings', 'webauthn_unreliable');
-      if (unreliable?.value) this._showWebAuthnBanner();
-    } catch { /* DB not ready yet — banner will appear after next timeout */ }
+  async refreshHome() {
+    const hasCred = !!(await db.get('settings', 'credential_id'));
+    const allKeys = await db.getAll('my_keys');
+    const dKey = allKeys.find(k => k.name.startsWith('D:') && !k.is_revoked);
+    const oKey = allKeys.find(k => k.name.startsWith('O:') && !k.is_revoked);
+    const done = hasCred && dKey && oKey;
 
-    log('version', APP_VERSION);
-    log('fflate', typeof fflate);
-    log('qrcode', typeof qrcode);
-    log('jsQR', typeof jsQR);
+    document.getElementById('home-wizard').style.display = done ? 'none' : '';
+    document.getElementById('home-status').style.display = done ? '' : 'none';
 
-    // Track when user manually edits the identity hint, to suppress auto-fill
-    document.getElementById('social-identity').addEventListener('input', function() {
-      this.dataset.userEdited = 'true';
-    });
-
-    // Handle Web Share Target (?text= / ?title= from share_target in manifest)
-    const _sp = new URLSearchParams(location.search);
-    const _shareText = _sp.get('text') || _sp.get('title') || '';
-    if (_shareText) {
-      if (/\[SSD:[^\]]+\]/.test(_shareText)) {
-        ui.showSection('socialVerify');
-        document.getElementById('social-verify-text').value = _shareText;
-      } else {
-        document.getElementById('social-text').value = _shareText;
-        document.getElementById('social-sign-heading').textContent = 'New Post';
-        this._socialPostId = null;
-        await this.loadSocialKeys();
-        const hintEl = document.getElementById('social-identity');
-        if (!hintEl.value) {
-          const allKeys = await db.getAll('my_keys');
-          const defKey = allKeys.find(k => k.is_default) || allKeys[0];
-          if (defKey) hintEl.value = `fp:${defKey.hash8}`;
-        }
-        ui.showSection('socialSign');
-      }
+    if (!done) {
+      this._updateWizardSteps(hasCred, dKey, oKey);
     } else {
-      const _ssdParam = _sp.get('ssd');
-      if (_ssdParam) {
-        history.replaceState({}, document.title, window.location.pathname);
-        ui.showSection('verify');
-        try {
-          const base64 = _ssdParam.replace(/-/g, '+').replace(/_/g, '/')
-            + '=='.slice(0, (4 - _ssdParam.length % 4) % 4);
-          const bin = atob(base64);
-          const bytes = new Uint8Array(bin.length);
-          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-          await this.verifyArtifact(new Blob([bytes]));
-        } catch(e) {
-          ui.display(`<span class="fail">Could not open .ssd from URL: ${e.message}</span>`);
-        }
-      } else {
-        ui.showSection('docs');
-      }
+      await this._renderHomeStatus(oKey);
     }
   },
 
-  async loadKeyring() {
-    const list = document.getElementById('keyring-list');
-    const keys = await db.getAll('my_keys');
-    if (keys.length === 0) {
-      list.innerHTML = '<div class="empty-state"><p>No keys yet.</p><p style="margin-top:8px">Tap <strong>+</strong> to create your first key.</p></div>';
-      return;
+  _updateWizardSteps(hasCred, dKey, oKey) {
+    const step1done = hasCred;
+    const step2done = hasCred && dKey && oKey;
+
+    const setClass = (id, done, current) =>
+      document.getElementById(id).className = `step ${done ? 'done' : current ? 'current' : 'pending'}`;
+
+    setClass('wz-1', step1done, !step1done);
+    setClass('wz-2', step2done, step1done && !step2done);
+    setClass('wz-3', false, step2done);
+
+    document.getElementById('wz-btn-1').disabled = step1done;
+    document.getElementById('wz-btn-2').disabled = !step1done || step2done;
+    document.getElementById('wz-btn-3').disabled = !step2done;
+  },
+
+  async _renderHomeStatus(oKey) {
+    const seed = await cryptoOps.identiconSeed(oKey.public_key_b64);
+    identicon.render(seed, document.getElementById('home-identicon'), 64);
+    document.getElementById('home-okey-name').textContent = oKey.name.startsWith('O:') ? oKey.name.slice(2) : oKey.name;
+    document.getElementById('home-hash8').textContent = oKey.hash8;
+    const hasCred = !!(await db.get('settings', 'credential_id'));
+    document.getElementById('home-passkey-status').textContent = hasCred ? '✓ Registered' : '✗ Not registered';
+    document.getElementById('home-passkey-status').className = hasCred ? 'ok' : 'fail';
+    const allKeys = await db.getAll('my_keys');
+    const dKey = allKeys.find(k => k.name.startsWith('D:') && !k.is_revoked);
+    document.getElementById('home-dkey-status').textContent = dKey ? (dKey.name.startsWith('D:') ? dKey.name.slice(2) : dKey.name) : '✗ Missing';
+    document.getElementById('home-dkey-status').className = dKey ? '' : 'fail';
+  },
+
+  async registerPasskey() {
+    if (await db.get('settings', 'credential_id')) {
+      this.msg('<span class="warn">Passkey already registered.</span>'); return;
     }
-    list.innerHTML = '';
-    for (const k of keys) list.appendChild(await this._buildKeyCard(k));
-  },
-
-  async _buildKeyCard(rec) {
-    const div = document.createElement('div');
-    div.className = 'key-card';
-    const seed = await cryptoOps.identiconSeed(rec.public_key_b64);
-    const imgSrc = identicon.renderToDataURL(seed, 64);
-    let displayName = rec.name, roleTag = '';
-    if (rec.name.startsWith('D:')) { displayName = rec.name.slice(2); roleTag = '<span class="badge" style="margin-right:4px">Device</span>'; }
-    else if (rec.name.startsWith('O:')) { displayName = rec.name.slice(2); roleTag = '<span class="badge badge-primary" style="margin-right:4px">Owner</span>'; }
-    const badges = [
-      rec.is_default ? '<span class="badge badge-primary">Default</span>' : '',
-      rec.is_revoked ? '<span class="badge badge-danger">Revoked</span>' : '',
-    ].join('');
-    div.innerHTML = `
-      <div class="key-card-header">
-        <img src="${imgSrc}" width="48" height="48" class="identicon" alt="">
-        <div class="key-card-meta">
-          <div class="key-name">${roleTag}${displayName}${badges}</div>
-          <div class="key-fp">${rec.hash8}</div>
-        </div>
-      </div>
-      <div class="key-card-actions">
-        <button onclick="app.doExportKeyCard('${rec.id}')">Export Key Card</button>
-        <button class="btn-secondary" onclick="app.copyProfileKeyDeclaration('${rec.id}')">Copy bio key</button>
-        <button class="btn-secondary" onclick="app.startSign('${rec.id}')">Sign Document</button>
-        <button class="btn-secondary" onclick="app.showKeyCardQR('${rec.id}')">Show QR</button>
-        <button class="btn-secondary" onclick="app.validateKey('${rec.id}')">Validate</button>
-        <button class="btn-secondary" onclick="app.renameMyKey('${rec.id}')">Rename</button>
-        ${rec.name.startsWith('O:') ? `<button class="btn-secondary" onclick="app.transferOwnerKey('${rec.id}')">Transfer to device…</button>` : ''}
-        <button class="btn-danger" onclick="app.deleteKey('${rec.id}')">Delete</button>
-      </div>`;
-    return div;
-  },
-
-  async loadComposeKeys() {
-    const sel = document.getElementById('compose-key-select');
-    const keys = await db.getAll('my_keys');
-    sel.innerHTML = keys.length
-      ? keys.map(k => `<option value="${k.id}"${k.is_default?' selected':''}>${k.name} [${k.hash8}]</option>`).join('')
-      : '<option value="">— No keys —</option>';
-  },
-
-  async loadSealRecipients() {
-    const list = document.getElementById('seal-recipient-list');
-    if (!list) return;
-    const myEncKey = await db.get('settings', 'my_encryption_key_pub');
-    const persons  = (await db.getAll('contacts')).filter(p => p.encryption_key_pub);
-    if (!myEncKey && !persons.length) {
-      list.innerHTML = '<p class="muted">No contacts with encryption keys yet — this document will be delivered open (signed but not sealed).</p>';
-      return;
-    }
-    const items = [];
-    if (myEncKey) items.push({ id: '__self__', label: 'Myself (keep a private copy)' });
-    for (const p of persons) items.push({ id: p.id, label: p.local_name });
-    list.innerHTML = items.map(it =>
-      `<label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;margin-bottom:8px">
-        <input type="checkbox" class="seal-recipient-cb" value="${it.id}">
-        ${it.label}
-      </label>`
-    ).join('');
-  },
-
-  startSign(keyId) {
-    ui.showSection('compose');
-    const sel = document.getElementById('compose-key-select');
-    for (const opt of sel.options) if (opt.value === keyId) { opt.selected = true; break; }
-  },
-
-  async previewSign() {
-    const text = document.getElementById('compose-text').value;
-    const keyId = document.getElementById('compose-key-select').value;
-    if (!text.trim()) { ui.clear(); ui.display('<span class="warn">Please enter document text.</span>'); return; }
-    if (!keyId)       { ui.clear(); ui.display('<span class="warn">Please select a signing key.</span>'); return; }
-    const rec = await db.get('my_keys', keyId);
-    if (!rec) { ui.clear(); ui.display('<span class="fail">Key not found.</span>'); return; }
-
-    const canonical = signer.canonicalise(text);
-    const wrapped   = signer.wrap(canonical);
-    const timestamp = new Date().toISOString();
-    const block     = signer.buildSignatureBlock(rec.hash8, rec.name, timestamp);
-    const render    = signer.buildRender(wrapped, block);
-
-    this._sigCtx = { keyId, wrapped, timestamp, render, rec };
-    document.getElementById('confirm-render').textContent = render;
-    ui.showSection('signConfirm');
-  },
-
-  async confirmSign() {
-    if (!this._sigCtx) { ui.showSection('compose'); return; }
-    const { keyId, wrapped, timestamp, render, rec } = this._sigCtx;
-
-    ui.showSection('signConfirm');
-    ui.display('Signing…');
-
+    this.msg('Registering passkey…');
     try {
-      await this._unlock();
+      const { prfSupported } = await passkey.register('SSD Keyring');
+      if (!prfSupported) {
+        await db.del('settings', 'credential_id');
+        this.msg('<span class="fail">This device does not support secure key storage. Use Android Chrome or iOS 18+ Safari.</span>');
+        return;
+      }
+      this.msg('<span class="ok">✓ Passkey registered.</span>');
+      await this.refreshHome();
+    } catch(e) {
+      this.msg(`<span class="fail">Registration failed: ${e.message}</span>`);
+    }
+  },
 
+  async ensureIdentity() {
+    this.msg('Authenticating…');
+    try {
+      await keyring.ensureUnlocked();
+      const allKeys = await db.getAll('my_keys');
+      const dKey = allKeys.find(k => k.name.startsWith('D:') && !k.is_revoked);
+      const oKey = allKeys.find(k => k.name.startsWith('O:') && !k.is_revoked);
+      if (!dKey) { this.msg('Creating device key…'); await keyring.createKey('D:My Device'); }
+      if (!oKey) { this.msg('Creating owner identity…'); await keyring.createKey('O:My Identity'); }
+      this.msg('Setting up encryption key…');
+      await keyring.ensureEncryptionKey();
+      this.msg('<span class="ok">✓ Identity ready.</span>');
+      await this.refreshHome();
+    } catch(e) {
+      this.msg(`<span class="fail">Failed: ${e.message}</span>`);
+    }
+  },
+
+  async shareBeacon() {
+    const allKeys = await db.getAll('my_keys');
+    const oKey = allKeys.find(k => k.name.startsWith('O:') && !k.is_revoked);
+    if (!oKey) { this.msg('<span class="warn">No owner key found — complete identity setup first.</span>'); return; }
+    const token = `[SSDKEY:${oKey.hash8}:${oKey.public_key_b64}]`;
+    try {
+      await navigator.clipboard.writeText(token);
+      this.msg(`<span class="ok">✓ Beacon copied — paste into your social media bio.</span><div class="token-box" style="margin-top:8px">${this._esc(token)}</div>`);
+    } catch {
+      this.msg(`<p class="muted" style="margin-bottom:8px">Copy this into your social media bio:</p><div class="token-box">${this._esc(token)}</div>`);
+    }
+  },
+
+  // ── SOCIAL ────────────────────────────────────────────────────────────────
+
+  async loadSocialKeys() {
+    const sel = document.getElementById('social-key-select');
+    const keys = (await db.getAll('my_keys')).filter(k => !k.is_revoked);
+    sel.innerHTML = keys.length
+      ? keys.map(k => `<option value="${k.id}">${this._esc(k.name)} (${k.hash8})</option>`).join('')
+      : '<option value="">— No keys — complete Home setup first —</option>';
+    await this._prefillIdentity();
+  },
+
+  async _prefillIdentity() {
+    const sel = document.getElementById('social-key-select');
+    if (!sel.value) return;
+    const rec = await db.get('my_keys', sel.value);
+    const identEl = document.getElementById('social-identity');
+    if (rec?.identity && !identEl.value) identEl.value = rec.identity;
+  },
+
+  async signSocial() {
+    const text = document.getElementById('social-text').value.trim();
+    const keyId = document.getElementById('social-key-select').value;
+    const identity = document.getElementById('social-identity').value.trim();
+    if (!text)     { this.msg('<span class="warn">Write something first.</span>'); return; }
+    if (!keyId)    { this.msg('<span class="warn">Select a signing key.</span>'); return; }
+    if (!identity) { this.msg('<span class="warn">Enter your platform identity (e.g. fb:profile/username).</span>'); return; }
+    this.msg('Signing…');
+    try {
+      await keyring.ensureUnlocked();
+      const rec = await db.get('my_keys', keyId);
+      if (!rec) throw new Error('Key not found.');
+      if (rec.identity !== identity) await db.put('my_keys', { ...rec, identity });
+
+      const canonical  = signer.canonicalise(text);
+      const timestamp  = new Date().toISOString().slice(0, 16) + 'Z';
+      const hashBuf    = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
+      const contentHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,'0')).join('');
+      const signedBytes = new TextEncoder().encode(`${rec.hash8}:${identity}:${contentHash}:${timestamp}`);
+      const privateKey  = await keyring.getPrivateKey(keyId);
+      const sig         = await cryptoOps.sign(privateKey, signedBytes);
+      const content8    = contentHash.slice(0, 8);
+      const token       = `[SSD:${rec.hash8}:${identity}:${content8}:${sig}:${timestamp}]`;
+      const fullPost    = canonical.trimEnd() + '\n\n' + token;
+
+      this.clearMsg();
+      this._lastSocialPost = { fullPost, token };
+      document.getElementById('social-full-post').textContent = fullPost;
+      document.getElementById('social-token-display').textContent = token;
+      document.getElementById('social-compose').style.display = 'none';
+      document.getElementById('social-result').style.display = '';
+    } catch(e) {
+      this.msg(`<span class="fail">Sign failed: ${e.message}</span>`);
+    }
+  },
+
+  async copySocialPost() {
+    if (!this._lastSocialPost) return;
+    try {
+      await navigator.clipboard.writeText(this._lastSocialPost.fullPost);
+      this.msg('<span class="ok">✓ Copied.</span>');
+    } catch { this.msg('<span class="warn">Copy failed — select the text above manually.</span>'); }
+  },
+
+  async copySocialToken() {
+    if (!this._lastSocialPost) return;
+    try {
+      await navigator.clipboard.writeText(this._lastSocialPost.token);
+      this.msg('<span class="ok">✓ Token copied.</span>');
+    } catch { this.msg('<span class="warn">Copy failed — select the text above manually.</span>'); }
+  },
+
+  newSocialPost() {
+    this._lastSocialPost = null;
+    document.getElementById('social-result').style.display = 'none';
+    document.getElementById('social-compose').style.display = '';
+    document.getElementById('social-text').value = '';
+    this.clearMsg();
+    document.getElementById('social-text').focus();
+  },
+
+  // ── DOCS ──────────────────────────────────────────────────────────────────
+
+  _showDocsView(id) {
+    ['docs-list','docs-compose','docs-preview','docs-view'].forEach(v => {
+      document.getElementById(v).style.display = v === id ? '' : 'none';
+    });
+    this.clearMsg();
+  },
+
+  async loadDocs() {
+    this._showDocsView('docs-list');
+    const artifacts = (await db.getAll('artifacts')).sort((a,b) => b.created.localeCompare(a.created));
+    const list = document.getElementById('docs-artifact-list');
+    if (!artifacts.length) {
+      list.innerHTML = '<p class="muted">No documents yet. Tap <strong>+ New</strong> to create one.</p>';
+      return;
+    }
+    list.innerHTML = artifacts.map(a => `
+      <div class="artifact-card" onclick="app.openArtifact('${a.id}')">
+        <div class="artifact-summary">${this._esc(a.summary || '(no summary)')}</div>
+        <div class="artifact-meta">
+          ${a.encrypted ? '<span class="badge badge-primary">Sealed</span>' : '<span class="badge">Signed</span>'}
+          <span class="muted">${a.created ? new Date(a.created).toLocaleDateString() : ''}</span>
+        </div>
+      </div>`).join('');
+  },
+
+  async newDoc() {
+    this._sigCtx = null;
+    document.getElementById('docs-text').value = '';
+    document.getElementById('docs-seal-self-check').checked = false;
+    this._showDocsView('docs-compose');
+    const sel = document.getElementById('docs-key-select');
+    const keys = (await db.getAll('my_keys')).filter(k => !k.is_revoked);
+    sel.innerHTML = keys.length
+      ? keys.map(k => `<option value="${k.id}">${this._esc(k.name)} (${k.hash8})</option>`).join('')
+      : '<option value="">— No keys —</option>';
+    document.getElementById('docs-text').focus();
+  },
+
+  async previewDoc() {
+    const text  = document.getElementById('docs-text').value.trim();
+    const keyId = document.getElementById('docs-key-select').value;
+    if (!text)  { this.msg('<span class="warn">Document text is empty.</span>'); return; }
+    if (!keyId) { this.msg('<span class="warn">Select a signing key.</span>'); return; }
+    const rec = await db.get('my_keys', keyId);
+    if (!rec) { this.msg('<span class="fail">Key not found.</span>'); return; }
+    const canonical = signer.canonicalise(text);
+    const timestamp = new Date().toISOString();
+    const block = signer.buildSignatureBlock(rec.hash8, rec.name, timestamp);
+    const render = signer.buildRender(canonical, block);
+    this._sigCtx = { keyId, canonical, timestamp, render, rec };
+    document.getElementById('docs-preview-text').textContent = render;
+    this._showDocsView('docs-preview');
+  },
+
+  async signDoc() {
+    if (!this._sigCtx) { this._showDocsView('docs-list'); return; }
+    const sealForSelf = document.getElementById('docs-seal-self-check').checked;
+    const { keyId, canonical, timestamp, render, rec } = this._sigCtx;
+    this.msg('Signing…');
+    try {
+      await keyring.ensureUnlocked();
       const enc    = new TextEncoder();
       const engine = renderEngines['ssd-render-1.0'];
-      const content = { source: wrapped, render };
-      const files  = {};
+      const content = { source: canonical, render };
+      const files = {};
       for (const [name, bytes] of Object.entries(engine.hashTargets(content)))
         files[name] = 'sha256:' + await cryptoOps.sha256(bytes);
-
       const manifestObj = {
         version: '1.0', render_spec: 'ssd-render-1.0',
-        signed_at: timestamp,
-        signer_hash8: rec.hash8, signer_name: rec.name,
-        files,
+        signed_at: timestamp, signer_hash8: rec.hash8, signer_name: rec.name, files,
       };
       const manifestBytes = enc.encode(JSON.stringify(manifestObj, null, 2));
       const privateKey    = await keyring.getPrivateKey(keyId);
       const signature     = await cryptoOps.sign(privateKey, manifestBytes);
-
-      const manifestHash = 'sha256:' + await cryptoOps.sha256(manifestBytes);
-      const signatureObj = {
-        algorithm: 'Ed25519', signer_hash8: rec.hash8,
-        capacity: ['ssd:author'],
+      const manifestHash  = 'sha256:' + await cryptoOps.sha256(manifestBytes);
+      const signatureObj  = {
+        algorithm: 'Ed25519', signer_hash8: rec.hash8, capacity: ['ssd:author'],
         signed_at: timestamp, manifest_hash: manifestHash, signature,
       };
-      const innerZip  = await artifact.pack(content, 'ssd-render-1.0', manifestObj, signatureObj);
-      const outerMeta = JSON.stringify({ ssd: 'sealed-enc-v1', signed_at: timestamp, signer_hash8: rec.hash8, manifest_hash: manifestHash });
-      const outerSig  = await cryptoOps.sign(privateKey, enc.encode(outerMeta));
+      const innerZip = await artifact.pack(content, 'ssd-render-1.0', manifestObj, signatureObj);
 
-      this._sigCtx = { ...this._sigCtx, innerZip, outerSig, outerMeta, manifestHash };
-      if (this._editingDraftId) {
-        await db.del('drafts', this._editingDraftId);
-        this._editingDraftId = null;
-      }
-      ui.clear();
-      ui.showSection('seal');
+      let outputBytes = innerZip;
+      let encrypted = false;
 
-    } catch (e) {
-      ui.clear();
-      ui.display(`<span class="fail">Signing failed: ${e.message}</span>`);
-      console.error(e);
-    }
-  },
-
-  cancelSeal() {
-    this._sigCtx = null;
-    ui.showSection('compose');
-  },
-
-  newDocument() {
-    this._editingDraftId = null;
-    document.getElementById('compose-text').value = '';
-    document.getElementById('compose-heading').textContent = 'New Document';
-    ui.showSection('compose');
-  },
-
-  async saveDraft() {
-    const text = document.getElementById('compose-text').value.trim();
-    if (!text) { ui.display('<span class="warn">Nothing to save.</span>'); return; }
-    const now = new Date().toISOString();
-    if (this._editingDraftId) {
-      const existing = await db.get('drafts', this._editingDraftId);
-      if (existing) {
-        await db.put('drafts', { ...existing, text, summary: text.slice(0, 80), updated: now });
-        ui.showSection('docs');
-        return;
-      }
-    }
-    const id = crypto.randomUUID();
-    await db.put('drafts', { id, text, summary: text.slice(0, 80), created: now, updated: now });
-    this._editingDraftId = id;
-    ui.showSection('docs');
-  },
-
-  async signDraft(id) {
-    const draft = await db.get('drafts', id);
-    if (!draft) return;
-    this._editingDraftId = id;
-    document.getElementById('compose-text').value = draft.text;
-    document.getElementById('compose-heading').textContent = 'Sign Document';
-    ui.showSection('compose');
-  },
-
-  async deleteDraft(id) {
-    if (!confirm('Delete this draft? It cannot be recovered.')) return;
-    await db.del('drafts', id);
-    if (this._editingDraftId === id) this._editingDraftId = null;
-    await this.loadDocs();
-  },
-
-  async doDeliver() {
-    if (!this._sigCtx) { ui.showSection('compose'); return; }
-    const { keyId, wrapped, timestamp, rec, innerZip, outerSig, outerMeta, manifestHash } = this._sigCtx;
-    const recipientIds = [...document.querySelectorAll('.seal-recipient-cb:checked')].map(cb => cb.value);
-    const enc = new TextEncoder();
-    const isSealed = recipientIds.length > 0;
-
-    ui.display(isSealed ? 'Sealing…' : 'Packaging…');
-    try {
-      let outputBytes, encryptedFor = [];
-
-      if (isSealed) {
-        const myEncSetting = await db.get('settings', 'my_encryption_key_pub');
-        const recipientPubs = [];
-        for (const id of recipientIds) {
-          if (id === '__self__') {
-            if (!myEncSetting) throw new Error('No encryption key — generate one in Me → Passkey & Devices.');
-            recipientPubs.push({ id: '__self__', pub: myEncSetting.value });
-            encryptedFor.push('__self__');
-          } else {
-            const person = await db.get('contacts', id);
-            if (!person?.encryption_key_pub) throw new Error(`${person?.local_name || id} has no encryption key.`);
-            recipientPubs.push({ id: person.id, pub: person.encryption_key_pub });
-            encryptedFor.push(person.id);
-          }
-        }
-        const dekBytes = window.crypto.getRandomValues(new Uint8Array(32));
-        const dekKey   = await cryptoOps.importAESKey(dekBytes);
+      if (sealForSelf) {
+        this.msg('Sealing…');
+        const myEncPub = await db.get('settings', 'my_encryption_key_pub');
+        if (!myEncPub) throw new Error('No encryption key — complete Home identity setup first.');
+        const outerMeta = JSON.stringify({ ssd: 'sealed-enc-v1', signed_at: timestamp, signer_hash8: rec.hash8, manifest_hash: manifestHash });
+        const outerSig  = await cryptoOps.sign(privateKey, enc.encode(outerMeta));
+        const dekBytes  = window.crypto.getRandomValues(new Uint8Array(32));
+        const dekKey    = await cryptoOps.importAESKey(dekBytes);
         const { iv_b64: dataIv, ct_b64: dataCt } = await cryptoOps.encryptBytes(innerZip, dekKey);
-        const slots = [];
-        for (const r of recipientPubs) {
-          const recipientPub = await cryptoOps.importX25519PublicKeyB64(r.pub);
-          slots.push({ for_key: r.pub, ...await cryptoOps.wrapDEK(dekBytes, recipientPub) });
-        }
-        const envelope = { ssd: 'sealed-enc-v1', signed_at: timestamp, signer_hash8: rec.hash8, manifest_hash: manifestHash, outer_sig: outerSig, recipients: slots, iv: dataIv, ct: dataCt };
+        const recipientPub = await cryptoOps.importX25519PublicKeyB64(myEncPub.value);
+        const slot = { for_key: myEncPub.value, ...await cryptoOps.wrapDEK(dekBytes, recipientPub) };
+        const envelope = { ssd: 'sealed-enc-v1', signed_at: timestamp, signer_hash8: rec.hash8, manifest_hash: manifestHash, outer_sig: outerSig, recipients: [slot], iv: dataIv, ct: dataCt };
         outputBytes = enc.encode(JSON.stringify(envelope));
-      } else {
-        outputBytes = innerZip;
+        encrypted = true;
       }
 
       const artifactId = window.crypto.randomUUID();
@@ -1099,558 +843,229 @@ const app = {
         hash8: rec.hash8,
         artifact_hash: 'sha256:' + await cryptoOps.sha256(outputBytes),
         render_spec: 'ssd-render-1.0', created: timestamp,
-        encrypted: isSealed, encrypted_for: encryptedFor, opfs_path: opfsPath,
-        manifest_hash: manifestHash,
-        summary: wrapped.slice(0, 80),
+        encrypted, encrypted_for: encrypted ? ['__self__'] : [],
+        opfs_path: opfsPath, manifest_hash: manifestHash,
+        summary: canonical.trim().slice(0, 80),
       });
 
+      this._deliverBytes    = outputBytes;
+      this._deliverFilename = `ssd-${rec.hash8}-${Date.now()}.ssd`;
       this._sigCtx = null;
-      this._deliverCtx = {
-        outputBytes,
-        filename: `ssd-${rec.hash8}-${Date.now()}.ssd`,
-        keyName: rec.name,
-        hash8: rec.hash8,
-        isSealed,
-        sealedForCount: encryptedFor.length,
-      };
-      ui.showSection('deliver');
-
-    } catch (e) {
-      ui.clear();
-      ui.display(`<span class="fail">Delivery failed: ${e.message}</span>`);
-      console.error(e);
+      await this.loadDocs();
+      this.msg(`<span class="ok">✓ Document ${encrypted ? 'sealed' : 'signed'} and saved.</span>
+        <button class="btn-secondary" style="margin-top:8px;min-height:36px;font-size:13px" onclick="app.downloadLastDoc()">Download .ssd</button>`);
+    } catch(e) {
+      this.msg(`<span class="fail">Signing failed: ${e.message}</span>`);
     }
   },
 
-  loadDeliver() {
-    const ctx = this._deliverCtx;
-    if (!ctx) { ui.showSection('docs'); return; }
-    const el = document.getElementById('deliver-info');
-    if (el) {
-      const sealNote = ctx.isSealed
-        ? `Sealed for ${ctx.sealedForCount} recipient${ctx.sealedForCount !== 1 ? 's' : ''}`
-        : 'Open — readable by anyone who has your public key';
-      el.innerHTML = `
-        <div style="font-size:13px;color:var(--text-muted)">Signed by <strong>${ctx.keyName}</strong> <span class="mono" style="font-size:11px">${ctx.hash8}</span></div>
-        <div style="font-size:13px;color:var(--text-muted);margin-top:6px">${sealNote}</div>`;
-    }
-    const shareBtn = document.getElementById('deliver-share-btn');
-    if (shareBtn) shareBtn.style.display = (typeof navigator.share === 'function') ? '' : 'none';
-  },
-
-  downloadDelivery() {
-    const ctx = this._deliverCtx;
-    if (!ctx) return;
+  downloadLastDoc() {
+    if (!this._deliverBytes) return;
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([ctx.outputBytes], { type: 'application/octet-stream' }));
-    a.download = ctx.filename;
+    a.href = URL.createObjectURL(new Blob([this._deliverBytes], { type: 'application/octet-stream' }));
+    a.download = this._deliverFilename;
     a.click();
     URL.revokeObjectURL(a.href);
   },
 
-  async shareDelivery() {
-    const ctx = this._deliverCtx;
-    if (!ctx || typeof navigator.share !== 'function') return;
+  async openArtifact(id) {
+    const a = await db.get('artifacts', id);
+    if (!a) return;
+    this._viewArtifactId = id;
+    this._showDocsView('docs-view');
+    document.getElementById('docs-view-meta').innerHTML = `
+      <span class="${a.encrypted ? 'badge badge-primary' : 'badge'}">${a.encrypted ? 'Sealed' : 'Signed'}</span>
+      <span class="muted">${a.created ? new Date(a.created).toLocaleDateString() : ''}</span>`;
+    const content = document.getElementById('docs-view-content');
+    content.textContent = 'Loading…';
     try {
-      const file = new File([ctx.outputBytes], ctx.filename, { type: 'application/octet-stream' });
-      await navigator.share({ files: [file], title: 'Signed document' });
-    } catch(e) {
-      if (e.name !== 'AbortError') ui.display(`<span class="fail">Share failed: ${e.message}</span>`);
-    }
-  },
-
-  async sendArtifact(id) {
-    try {
-      const a = await db.get('artifacts', id);
-      if (!a) return;
-      const myKeys = await db.getAll('my_keys');
-      const sigKey = myKeys.find(k => k.id === a.signed_by_key_id);
-      const outputBytes = await opfsStore.read(a.opfs_path);
-      this._deliverCtx = {
-        outputBytes,
-        filename: `ssd-${a.hash8}-${Date.now()}.ssd`,
-        keyName: sigKey?.name || a.hash8,
-        hash8: a.hash8,
-        isSealed: a.encrypted,
-        sealedForCount: a.encrypted_for?.length || 0,
-      };
-      ui.showSection('deliver');
-    } catch(e) {
-      ui.display(`<span class="fail">Could not load document: ${e.message}</span>`);
-    }
-  },
-
-  async sealExistingArtifact(id) {
-    try {
-      const a = await db.get('artifacts', id);
-      if (!a) return;
-      ui.display('Unlocking…');
-      await this._unlock();
-
-      let innerZip;
-      let manifestHash = a.manifest_hash;
       const rawBytes = await opfsStore.read(a.opfs_path);
-
+      let render;
       if (a.encrypted) {
-        // Decrypt to recover innerZip
         const envelope = JSON.parse(new TextDecoder().decode(rawBytes));
         const myEncKeys = await db.getAll('encryption_keys');
         const slot = envelope.recipients?.find(r => myEncKeys.some(k => k.pub === r.for_key));
-        if (!slot) { ui.display('<span class="warn">This document is sealed for different recipients — cannot reseal from here.</span>'); return; }
+        if (!slot) { content.textContent = '[Sealed for different recipients — cannot open here]'; return; }
+        this.msg('Decrypting…');
+        await keyring.ensureUnlocked();
         const myPriv   = await keyring.getEncryptionPrivateKey(slot.for_key);
         const dekBytes = await cryptoOps.unwrapDEK(slot, myPriv);
         const dekKey   = await cryptoOps.importAESKey(dekBytes);
-        innerZip = await cryptoOps.decryptBytes(envelope.iv, envelope.ct, dekKey);
-        if (!manifestHash) manifestHash = envelope.manifest_hash;
+        const innerZip = await cryptoOps.decryptBytes(envelope.iv, envelope.ct, dekKey);
+        this.clearMsg();
+        const unpacked = await artifact.unpack(innerZip);
+        render = unpacked.content.render || unpacked.content.source;
       } else {
-        innerZip = rawBytes;
-        // Extract manifest_hash from signature.json inside the ZIP if missing from DB
-        if (!manifestHash) {
-          const unzipped = fflate.unzipSync(innerZip);
-          const sigJson = JSON.parse(new TextDecoder().decode(unzipped['signature.json']));
-          manifestHash = sigJson.manifest_hash;
-          if (manifestHash) await db.put('artifacts', { ...a, manifest_hash: manifestHash });
-        }
+        const unpacked = await artifact.unpack(rawBytes);
+        render = unpacked.content.render || unpacked.content.source;
       }
-
-      if (!manifestHash) { ui.display('<span class="warn">Cannot seal — document is missing a manifest hash. Re-sign it to enable sealing.</span>'); return; }
-
-      const privateKey = await keyring.getPrivateKey(a.signed_by_key_id);
-      const enc = new TextEncoder();
-      const outerMeta = JSON.stringify({ ssd: 'sealed-enc-v1', signed_at: a.created, signer_hash8: a.hash8, manifest_hash: manifestHash });
-      const outerSig  = await cryptoOps.sign(privateKey, enc.encode(outerMeta));
-      const rec = await db.get('my_keys', a.signed_by_key_id);
-      this._sigCtx = { keyId: a.signed_by_key_id, wrapped: a.summary || '', timestamp: a.created, render: null, rec, innerZip, outerSig, outerMeta, manifestHash };
-      ui.clear();
-      ui.showSection('seal');
+      content.textContent = render || '(empty)';
     } catch(e) {
-      ui.clear();
-      ui.display(`<span class="fail">Could not prepare seal: ${e.message}</span>`);
+      content.textContent = `Error opening document: ${e.message}`;
     }
   },
 
-  async transferOwnerKey(keyId) {
-    this._transferKeyId = keyId;
-    const contacts = (await db.getAll('contacts')).filter(c => c.encryption_key_pub);
-    const sel  = document.getElementById('transfer-key-contact-select');
-    const warn = document.getElementById('transfer-key-warn');
-    const btn  = document.getElementById('transfer-key-confirm-btn');
-    if (!contacts.length) {
-      sel.innerHTML = '<option value="">— No paired devices —</option>';
-      warn.textContent = 'No contacts with encryption keys. Pair with another device first.';
-      warn.style.display = 'block';
-      btn.disabled = true;
-    } else {
-      sel.innerHTML = contacts.map(c => `<option value="${c.id}">${c.local_name}</option>`).join('');
-      warn.style.display = 'none';
-      btn.disabled = false;
-    }
-    document.getElementById('transfer-key-modal').style.display = 'flex';
-  },
-
-  closeTransferModal() {
-    document.getElementById('transfer-key-modal').style.display = 'none';
-  },
-
-  async confirmTransferKey() {
-    const contactId = document.getElementById('transfer-key-contact-select').value;
-    if (!contactId) return;
-    this.closeTransferModal();
-    await this.doTransferKey(this._transferKeyId, contactId);
-  },
-
-  async doTransferKey(ownerKeyId, contactId) {
-    ui.clear();
-    ui.display('Preparing key transfer…');
+  async downloadArtifact() {
+    if (!this._viewArtifactId) return;
+    const a = await db.get('artifacts', this._viewArtifactId);
+    if (!a) return;
     try {
-      await this._unlock();
-
-      const ownerRec = await db.get('my_keys', ownerKeyId);
-      const privB64  = await keyring.exportKeyB64(ownerKeyId);
-
-      // Sign with the device key (D: prefix preferred, else default)
-      const allMyKeys = await db.getAll('my_keys');
-      const signerRec = allMyKeys.find(k => k.name.startsWith('D:') && !k.is_revoked)
-                     || allMyKeys.find(k => k.is_default && !k.is_revoked);
-      if (!signerRec) throw new Error('No device key to sign with — create one in Me → Keys.');
-
-      const contact = await db.get('contacts', contactId);
-      if (!contact?.encryption_key_pub) throw new Error('Contact has no encryption key.');
-
-      const enc       = new TextEncoder();
-      const timestamp = new Date().toISOString();
-      const content   = { key_name: ownerRec.name, signing_pub_b64: ownerRec.public_key_b64, signing_priv_b64: privB64 };
-      const engine    = renderEngines['ssd-key-transfer-1.0'];
-
-      const fileHashes = {};
-      for (const [fname, bytes] of Object.entries(engine.hashTargets(content)))
-        fileHashes[fname] = 'sha256:' + await cryptoOps.sha256(bytes);
-
-      const privateKey  = await keyring.getPrivateKey(signerRec.id);
-      const manifestObj = {
-        version: '1.0', render_spec: 'ssd-key-transfer-1.0',
-        signed_at: timestamp, signer_hash8: signerRec.hash8, signer_name: signerRec.name,
-        files: fileHashes,
-      };
-      const manifestBytes = enc.encode(JSON.stringify(manifestObj, null, 2));
-      const signature     = await cryptoOps.sign(privateKey, manifestBytes);
-      const manifestHash  = 'sha256:' + await cryptoOps.sha256(manifestBytes);
-      const signatureObj  = { algorithm: 'Ed25519', signer_hash8: signerRec.hash8, capacity: ['ssd:author'], signed_at: timestamp, manifest_hash: manifestHash, signature };
-      const innerZip      = await artifact.pack(content, 'ssd-key-transfer-1.0', manifestObj, signatureObj);
-
-      const outerMeta = JSON.stringify({ ssd: 'sealed-enc-v1', signed_at: timestamp, signer_hash8: signerRec.hash8, manifest_hash: manifestHash });
-      const outerSig  = await cryptoOps.sign(privateKey, enc.encode(outerMeta));
-
-      const dekBytes     = window.crypto.getRandomValues(new Uint8Array(32));
-      const dekKey       = await cryptoOps.importAESKey(dekBytes);
-      const { iv_b64: dataIv, ct_b64: dataCt } = await cryptoOps.encryptBytes(innerZip, dekKey);
-      const recipientPub = await cryptoOps.importX25519PublicKeyB64(contact.encryption_key_pub);
-      const slot         = { for_key: contact.encryption_key_pub, ...await cryptoOps.wrapDEK(dekBytes, recipientPub) };
-      const envelope     = { ssd: 'sealed-enc-v1', signed_at: timestamp, signer_hash8: signerRec.hash8, manifest_hash: manifestHash, outer_sig: outerSig, recipients: [slot], iv: dataIv, ct: dataCt };
-      const outputBytes  = enc.encode(JSON.stringify(envelope));
-
-      const artifactId = window.crypto.randomUUID();
-      const opfsPath   = `artifacts/${artifactId}.ssd`;
-      await opfsStore.write(opfsPath, outputBytes);
-      await db.put('artifacts', {
-        id: artifactId, direction: 'sent', signed_by_key_id: signerRec.id,
-        hash8: signerRec.hash8,
-        artifact_hash: 'sha256:' + await cryptoOps.sha256(outputBytes),
-        render_spec: 'ssd-key-transfer-1.0', created: timestamp,
-        encrypted: true, encrypted_for: [contactId], opfs_path: opfsPath,
-        manifest_hash: manifestHash,
-        summary: `Key transfer: ${ownerRec.name} → ${contact.local_name}`,
-      });
-
-      this._deliverCtx = {
-        outputBytes, isSealed: true, sealedForCount: 1,
-        filename: `key-transfer-${Date.now()}.ssd`,
-        keyName: signerRec.name, hash8: signerRec.hash8,
-      };
-      ui.clear();
-      ui.showSection('deliver');
+      const bytes = await opfsStore.read(a.opfs_path);
+      const el = document.createElement('a');
+      el.href = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
+      el.download = `ssd-${a.hash8}-${Date.now()}.ssd`;
+      el.click();
+      URL.revokeObjectURL(el.href);
     } catch(e) {
-      ui.clear();
-      ui.display(`<span class="fail">Transfer failed: ${e.message}</span>`);
+      this.msg(`<span class="fail">Download failed: ${e.message}</span>`);
     }
   },
 
-  async importTransferredKey() {
-    if (!this._pendingKeyImport) return;
-    const { key_name, signing_pub_b64, signing_priv_b64 } = this._pendingKeyImport;
-    this._pendingKeyImport = null;
-    ui.clear();
-    ui.display('Importing key…');
-    try {
-      await this._unlock();
-      const rec = await keyring.importKey(key_name, signing_pub_b64, signing_priv_b64);
-      await this.loadKeyring();
-      ui.display(`<div class="ok">✓ Key <strong>${rec.name}</strong> imported. Find it in Me → Keys.</div>`);
-    } catch(e) {
-      ui.display(`<span class="fail">Import failed: ${e.message}</span>`);
-    }
+  // ── KEYS ──────────────────────────────────────────────────────────────────
+
+  async loadKeys() {
+    const myKeys      = await db.getAll('my_keys');
+    const contactKeys = await db.getAll('contact_keys');
+
+    const oKeys = myKeys.filter(k => k.name.startsWith('O:') && !k.is_revoked);
+    document.getElementById('keys-beacon-list').innerHTML = oKeys.length
+      ? oKeys.map(k => `
+          <div class="key-item">
+            <div class="key-item-name">${this._esc(k.name)}</div>
+            <div class="key-item-hash">${k.hash8}</div>
+            <button class="btn-secondary" onclick="app.copyBeacon('${k.id}')">Copy beacon</button>
+          </div>`).join('')
+      : '<p class="muted">No owner keys yet — complete setup in Home.</p>';
+
+    document.getElementById('keys-my-list').innerHTML = myKeys.length
+      ? myKeys.map(k => `
+          <div class="key-item${k.is_revoked ? ' revoked' : ''}">
+            <div class="key-item-name">
+              ${this._esc(k.name)}
+              ${k.is_revoked ? '<span class="badge badge-danger">Revoked</span>' : ''}
+              ${k.is_default ? '<span class="badge badge-primary">Default</span>' : ''}
+            </div>
+            <div class="key-item-hash">${k.hash8}</div>
+          </div>`).join('')
+      : '<p class="muted">No keys.</p>';
+
+    document.getElementById('keys-contact-list').innerHTML = contactKeys.length
+      ? contactKeys.map(k => `
+          <div class="key-item">
+            <div class="key-item-name">${this._esc(k.name)}</div>
+            <div class="key-item-hash">${k.hash8}</div>
+          </div>`).join('')
+      : '<p class="muted">No imported keys yet.</p>';
   },
 
-  async verifyArtifact(file) {
-    ui.clear();
-    ui.display('Verifying…');
-    try {
-      const rawBytes = new Uint8Array(await file.arrayBuffer());
-
-      let zipBytes = rawBytes;
-      let wasEncrypted = false;
-      let outerSigStatus = null;
-      let openedAs = null;
-
-      // Try to detect an encrypted envelope — only catch JSON parse failures here.
-      // Any error inside the sealed-enc-v1 block propagates up naturally.
-      let envelope = null;
-      try {
-        const parsed = JSON.parse(new TextDecoder().decode(rawBytes));
-        if (parsed.ssd === 'sealed-enc-v1') envelope = parsed;
-      } catch { /* not JSON — treat as plain ZIP */ }
-
-      if (envelope) {
-        log('dec-1: envelope detected, recipients:', envelope.recipients?.length);
-
-        // Verify outer signature (no decryption needed)
-        if (envelope.outer_sig && envelope.signer_hash8) {
-          log('dec-2: verifying outer sig for', envelope.signer_hash8);
-          const outerMeta = JSON.stringify({ ssd: 'sealed-enc-v1', signed_at: envelope.signed_at, signer_hash8: envelope.signer_hash8, manifest_hash: envelope.manifest_hash });
-          const allKeys = [...await db.getAll('my_keys'), ...await db.getAll('contact_keys')];
-          const signerKey = allKeys.find(k => k.hash8 === envelope.signer_hash8);
-          if (signerKey) {
-            const pubKey = await cryptoOps.importPublicKeyB64(signerKey.public_key_b64);
-            log('dec-3: pubkey imported');
-            const valid  = await cryptoOps.verify(pubKey, envelope.outer_sig, new TextEncoder().encode(outerMeta));
-            log('dec-4: outer sig valid:', valid);
-            outerSigStatus = valid ? { ok: true, name: signerKey.name, fp: signerKey.hash8 } : { ok: false };
-          } else {
-            outerSigStatus = { ok: null, fp: envelope.signer_hash8 };
-          }
-        }
-
-        // Find our recipient slot — search all stored encryption keys (current and retired)
-        const myEncKeys = await db.getAll('encryption_keys');
-        log('dec-5: my enc keys count:', myEncKeys.length);
-        const slot = envelope.recipients?.find(r => myEncKeys.some(k => k.pub === r.for_key));
-        log('dec-6: slot found:', !!slot);
-        if (!slot) {
-          ui.clear();
-          const rCount = envelope.recipients?.length ?? 0;
-          let outerNote = `<div class="info" style="margin-bottom:8px">Encrypted to ${rCount} recipient${rCount !== 1 ? 's' : ''}.`;
-          if (outerSigStatus?.ok === true)       outerNote += ` Sealed by: <strong>${outerSigStatus.name}</strong> <span class="mono" style="font-size:11px">${outerSigStatus.fp}</span>`;
-          else if (outerSigStatus?.ok === false) outerNote += ' <span class="warn">Outer signature INVALID.</span>';
-          else if (outerSigStatus?.ok === null)  outerNote += ` Sealed by unknown key <span class="mono" style="font-size:11px">${outerSigStatus.fp}</span>.`;
-          outerNote += '</div>';
-          ui.display(outerNote);
-          ui.display('<div class="verify-result"><div class="warn">🔒 Sealed — not addressed to you</div><div style="margin-top:4px;color:var(--text-muted);font-size:12px">This document is sealed for different recipients. Content and inner signature cannot be verified.</div></div>');
-          return;
-        }
-
-        ui.display('Encrypted document — authenticate to open…');
-        await this._unlock();
-        log('dec-7: unlocked, getting enc private key for', slot.for_key.slice(0, 8) + '…');
-        const myPriv   = await keyring.getEncryptionPrivateKey(slot.for_key);
-        log('dec-8: got priv key, unwrapping DEK');
-        const dekBytes = await cryptoOps.unwrapDEK(slot, myPriv);
-        log('dec-9: DEK unwrapped, len:', dekBytes.length);
-        const dekKey   = await cryptoOps.importAESKey(dekBytes);
-        log('dec-10: DEK key imported, decrypting content');
-        zipBytes     = await cryptoOps.decryptBytes(envelope.iv, envelope.ct, dekKey);
-        log('dec-11: content decrypted, zip len:', zipBytes.length);
-        wasEncrypted = true;
-        const nameSetting = await db.get('settings', 'my_device_name');
-        openedAs = nameSetting?.value || 'this device';
-      }
-
-      const unpacked = await artifact.unpack(zipBytes);
-      const result   = await artifact.verify(unpacked);
-      ui.clear();
-
-      if (wasEncrypted) {
-        const rCount = envelope.recipients?.length ?? 0;
-        let outerNote = `<div class="info" style="margin-bottom:8px">Encrypted to ${rCount} recipient${rCount !== 1 ? 's' : ''}.`;
-        if (outerSigStatus?.ok === true)       outerNote += ` Outer signature verified: <strong>${outerSigStatus.name}</strong> <span class="mono" style="font-size:11px">${outerSigStatus.fp}</span>`;
-        else if (outerSigStatus?.ok === false) outerNote += ' <span class="warn">Outer signature INVALID.</span>';
-        else if (outerSigStatus?.ok === null)  outerNote += ` Signed by unknown key <span class="mono" style="font-size:11px">${outerSigStatus.fp}</span>.`;
-        outerNote += '</div>';
-        ui.display(outerNote);
-      }
-
-      ui.display('<strong>Rendered document:</strong>');
-      document.getElementById('results').appendChild(unpacked.engine.toElement(unpacked.content));
-      const sealStatus = wasEncrypted ? { state: 'opened', identity: openedAs } : { state: 'public' };
-      ui.displayVerification(result, sealStatus);
-
-      if (result.render_spec === 'ssd-key-transfer-1.0') {
-        const contactKeys   = await db.getAll('contact_keys');
-        const outerFp       = envelope?.signer_hash8;
-        const innerFp       = result.signer_hash8;
-        const signerContact = contactKeys.find(k => k.hash8 === innerFp && !k.is_quarantined);
-        const reasons = [];
-        if (outerSigStatus?.ok !== true)   reasons.push('outer envelope signature missing or invalid');
-        if (!signerContact)                reasons.push('signer is not a trusted contact on this device');
-        if (!result.signature_valid)       reasons.push('document signature invalid');
-        if (!result.content_unmodified)    reasons.push('content hash mismatch');
-        if (outerFp !== innerFp)           reasons.push('envelope and document signers do not match');
-        const el = document.getElementById('results');
-        const action = document.createElement('div');
-        action.className = 'verify-result';
-        if (reasons.length) {
-          action.innerHTML = `<div class="fail"><strong>Import not available:</strong><br>${reasons.map(r => `✗ ${r}`).join('<br>')}</div>`;
-        } else {
-          this._pendingKeyImport = { ...unpacked.content };
-          action.innerHTML = `<div style="margin-top:4px"><button onclick="app.importTransferredKey()">Import key</button></div>`;
-        }
-        el.appendChild(action);
-      }
-    } catch (e) {
-      ui.clear();
-      ui.display(`<span class="fail">Verification failed: ${e.name}: ${e.message}</span>`);
-      log('verify-error', e.name, e.message, e.stack);
-      console.error(e);
-    }
-  },
-
-  handleDrop(event) {
-    event.preventDefault();
-    document.getElementById('verify-drop').classList.remove('drag-over');
-    const file = event.dataTransfer.files[0];
-    if (file) this.verifyArtifact(file);
-  },
-
-  async createKey() {
-    const name = document.getElementById('new-key-name').value.trim();
-    if (!name) { ui.display('<span class="warn">Please enter a key name.</span>'); return; }
-    ui.clear();
-    ui.display('Generating keypair…');
-    try {
-      await this._unlock();
-      const rec = await keyring.createKey(name);
-      document.getElementById('new-key-name').value = '';
-      ui.clear();
-      ui.display(`<div class="ok">✓ Key created: <strong>${rec.name}</strong> [<span class="mono">${rec.hash8}</span>]</div>`);
-      ui.showSection('keyring');
-    } catch (e) {
-      ui.clear();
-      ui.display(`<span class="fail">Key creation failed: ${e.message}</span>`);
-      console.error(e);
-    }
-  },
-
-  async deleteKey(keyId) {
+  async copyBeacon(keyId) {
     const rec = await db.get('my_keys', keyId);
     if (!rec) return;
-    const keys = await db.getAll('my_keys');
-    const isDefault = rec.is_default;
-    const isOnly = keys.length === 1;
-    let warning = `Delete "${rec.name}"?\n\nThis permanently removes the private key from this device. Any documents signed with it can still be verified using the public key, but you will no longer be able to sign new documents with it.`;
-    if (isOnly) warning += '\n\nThis is your only key — you will need to create a new one to sign documents.';
-    if (isDefault && !isOnly) warning += '\n\nThis is your default key. Another key will become the default.';
-    if (!confirm(warning)) return;
-    await db.del('my_keys', keyId);
-    if (isDefault && !isOnly) {
-      const remaining = await db.getAll('my_keys');
-      if (remaining.length) await db.put('my_keys', { ...remaining[0], is_default: true });
-    }
-    ui.display(`<div class="ok">Key "${rec.name}" deleted.</div>`);
-    await this.loadKeyring();
-  },
-
-  async doExportKeyCard(keyId) {
-    ui.clear();
-    ui.display('Preparing key card…');
-    try {
-      await this._unlock();
-      const card = await keyring.exportKeyCard(keyId);
-
-      // Verify self-signature before export
-      const valid = await keyring.verifyKeyCard(card);
-      if (!valid) throw new Error('Self-signature verification failed — key may be corrupt.');
-
-      const json = JSON.stringify(card, null, 2);
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
-      a.download = `ssd-key-${card.hash8}.json`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-
-      ui.clear();
-      ui.display(`<div class="ok">✓ Key card exported and self-signature verified.</div>
-        <div>${card.name} [<span class="mono">${card.hash8}</span>]</div>
-        <div style="margin-top:10px;font-size:12px;color:var(--text-muted)">Click below to copy JSON:</div>`);
-      const pre = document.createElement('pre');
-      pre.className = 'key-card-json';
-      pre.title = 'Click to copy';
-      pre.textContent = json;
-      pre.onclick = () => { navigator.clipboard.writeText(json); ui.display('Copied to clipboard.'); };
-      document.getElementById('results').appendChild(pre);
-    } catch (e) {
-      ui.clear();
-      ui.display(`<span class="fail">Export failed: ${e.message}</span>`);
-      console.error(e);
-    }
-  },
-
-  async copyProfileKeyDeclaration(keyId) {
-    const rec = await db.get('my_keys', keyId);
-    if (!rec) { ui.display('<span class="fail">Key not found.</span>'); return; }
     const token = `[SSDKEY:${rec.hash8}:${rec.public_key_b64}]`;
     try {
       await navigator.clipboard.writeText(token);
-      ui.display(`<div class="ok">✓ Profile key copied — paste into your Facebook bio.</div>
-        <pre style="font-size:11px;font-family:var(--mono);margin-top:8px;word-break:break-all;color:var(--text-muted)">${token}</pre>`);
+      this.msg('<span class="ok">✓ Beacon copied.</span>');
     } catch {
-      ui.display(`<div class="muted" style="margin-bottom:6px;font-size:12px">Copy this into your Facebook bio:</div>
-        <pre style="font-size:11px;font-family:var(--mono);word-break:break-all;padding:10px;background:var(--surface-2);border-radius:4px;cursor:text">${token}</pre>`);
+      this.msg(`<p class="muted" style="margin-bottom:6px">Copy this:</p><div class="token-box">${this._esc(token)}</div>`);
     }
   },
 
-  async renameMyKey(keyId) {
-    const rec = await db.get('my_keys', keyId);
-    if (!rec) return;
-    const newName = prompt('Rename key:', rec.name);
-    if (!newName || newName.trim() === rec.name) return;
-    await db.put('my_keys', { ...rec, name: newName.trim() });
-    await this.loadKeyring();
-  },
-
-  async renameContact(personId) {
-    const person = await db.get('contacts', personId);
-    if (!person) return;
-    const newName = prompt('Rename contact:', person.local_name);
-    if (!newName || newName.trim() === person.local_name) return;
-    await db.put('contacts', { ...person, local_name: newName.trim() });
-    await this.loadContacts();
-  },
-
-  async registerPasskey() {
-    const existing = await db.get('settings', 'credential_id');
-    if (existing) {
-      ui.display('<span class="warn">A passkey is already registered. Use "Clear passkey and all keys…" below to replace it.</span>');
-      return;
-    }
-    const label = document.getElementById('passkey-label').value.trim() || 'SSD Keyring';
-    ui.clear();
-    ui.display('Registering passkey…');
+  async importKey() {
+    const text = document.getElementById('keys-import-text').value.trim();
+    if (!text) { this.msg('<span class="warn">Paste a beacon or key card first.</span>'); return; }
+    this.msg('Importing…');
     try {
-      const { prfSupported } = await passkey.register(label);
-      ui.clear();
-      if (!prfSupported) {
-        await db.del('settings', 'credential_id');
-        await db.del('settings', 'prf_supported');
-        ui.display('<div class="fail">Passkey not registered — it doesn\'t support secure key storage. Use a phone (Chrome on Android or Safari on iOS 18+) or a FIDO2 hardware key.</div>');
-      } else {
-        ui.display('<div class="ok">✓ Passkey registered. Creating device key…</div>');
-        try {
-          const deviceRec = await keyring.createKey('D:Device Key');
-          ui.display(`<div class="ok">✓ Passkey registered. Device key created automatically (${deviceRec.hash8}).</div>`);
-        } catch (ke) {
-          ui.display('<div class="ok">✓ Passkey registered.</div><div class="warn">Device key creation failed — create one manually in Keys.</div>');
-          console.error('Auto device key failed:', ke);
-        }
+      const beaconMatch = text.match(/\[SSDKEY:([A-Za-z0-9_-]{8}):([A-Za-z0-9+/=_-]+)\]/);
+      if (beaconMatch) {
+        await this._importBeacon(beaconMatch[1], beaconMatch[2]); return;
       }
-      await this.checkPasskeyStatus();
-    } catch (e) {
-      ui.clear();
-      ui.display(`<span class="fail">Registration failed: ${e.message}</span>`);
-      console.error(e);
+      const card = JSON.parse(text);
+      await this._importKeyCard(card);
+    } catch(e) {
+      this.msg(`<span class="fail">Import failed: ${e.message}</span>`);
     }
   },
 
-  async clearPasskey() {
-    const keys = await db.getAll('my_keys');
-    const keyWord = keys.length === 1 ? '1 signing key' : `${keys.length} signing keys`;
-    const msg = keys.length > 0
-      ? `This will permanently delete your passkey registration and ${keyWord}. They cannot be recovered. Continue?`
-      : 'This will remove your passkey registration. Continue?';
-    if (!confirm(msg)) return;
-    await db.del('settings', 'credential_id');
-    await db.del('settings', 'prf_supported');
-    for (const k of keys) await db.del('my_keys', k.id);
-    keyring._sessionKey = null;
-    ui.clear();
-    ui.display('<div class="ok">Cleared. You can now register a new passkey.</div>');
-    await this.checkPasskeyStatus();
-    await this.loadKeyring();
+  async _importBeacon(hash8, pubB64) {
+    const computed = await cryptoOps.hash8(pubB64);
+    if (computed !== hash8) throw new Error('Beacon hash8 does not match public key.');
+    const existing = (await db.getAll('contact_keys')).find(k => k.hash8 === hash8);
+    if (existing) { this.msg(`<span class="warn">Already have key ${hash8}.</span>`); return; }
+    if ((await db.getAll('my_keys')).find(k => k.hash8 === hash8)) {
+      this.msg('<span class="warn">This is one of your own keys.</span>'); return;
+    }
+    const name = prompt(`Name for this contact's key (${hash8})?`, hash8);
+    if (!name) { this.clearMsg(); return; }
+    await db.put('contact_keys', {
+      id: window.crypto.randomUUID(), person_id: null, name, hash8,
+      public_key_b64: pubB64, identicon_algorithm: 'ssd-identicon-1.0',
+      self_image_b64: null, received_via: 'beacon',
+      received_at: new Date().toISOString(), expires: null,
+      recheck_interval_days: 90, last_checked: new Date().toISOString(),
+      revocation_hint: null, trust_type: 'peer',
+    });
+    document.getElementById('keys-import-text').value = '';
+    this.msg(`<span class="ok">✓ Key ${hash8} imported as "${this._esc(name)}".</span>`);
+    await this.loadKeys();
+  },
+
+  async _importKeyCard(card) {
+    if (!card.public_key || !card.hash8) throw new Error('Not a valid key card (missing public_key or hash8).');
+    const normalized = {
+      chain:                 card.chain                 ?? [],
+      encryption_key:        card.encryption_key        ?? null,
+      expires:               card.expires               ?? null,
+      hash8:                 card.hash8,
+      identicon_algorithm:   card.identicon_algorithm   ?? 'ssd-identicon-1.0',
+      issued:                card.issued                ?? null,
+      name:                  card.name,
+      public_key:            card.public_key,
+      recheck_interval_days: card.recheck_interval_days ?? 90,
+      revocation_hint:       card.revocation_hint       ?? null,
+      self_image:            card.self_image            ?? null,
+      self_signed:           card.self_signed,
+      signing_algorithm:     card.signing_algorithm     ?? 'Ed25519',
+      version:               card.version               ?? '1.0',
+    };
+    const valid = await keyring.verifyKeyCard(normalized);
+    if (!valid) throw new Error('Key card signature is invalid — may have been tampered with.');
+    const fp = await cryptoOps.hash8(card.public_key);
+    if (fp !== card.hash8) throw new Error('Fingerprint does not match public key — corrupt key card.');
+    const existing = (await db.getAll('contact_keys')).find(k => k.hash8 === card.hash8);
+    if (existing) { this.msg(`<span class="warn">Already have key ${card.hash8}.</span>`); return; }
+    if ((await db.getAll('my_keys')).find(k => k.hash8 === card.hash8)) {
+      this.msg('<span class="warn">This is one of your own keys.</span>'); return;
+    }
+    const name = prompt(`Name for "${card.name}" (${card.hash8})?`, card.name);
+    if (!name) { this.clearMsg(); return; }
+    await db.put('contact_keys', {
+      id: window.crypto.randomUUID(), person_id: null, name,
+      hash8: card.hash8, public_key_b64: card.public_key,
+      identicon_algorithm: card.identicon_algorithm || 'ssd-identicon-1.0',
+      self_image_b64: card.self_image || null, received_via: 'key-card',
+      received_at: new Date().toISOString(), expires: card.expires || null,
+      recheck_interval_days: card.recheck_interval_days || 90,
+      last_checked: new Date().toISOString(), revocation_hint: card.revocation_hint || null,
+      trust_type: 'peer',
+    });
+    document.getElementById('keys-import-text').value = '';
+    this.msg(`<span class="ok">✓ Key "${this._esc(name)}" (${card.hash8}) imported.</span>`);
+    await this.loadKeys();
   },
 
   async factoryReset() {
     if (!confirm('Wipe ALL data on this device?\n\nThis deletes every key, contact, document, and setting. It cannot be undone.\n\nDownloaded .ssd files are not affected.')) return;
     try {
-      // Clear OPFS artifact blobs
       try {
         const root = await navigator.storage.getDirectory();
         await root.removeEntry('artifacts', { recursive: true });
       } catch { /* OPFS may be empty */ }
-      // Close DB connection then delete the entire database
       db._db?.close();
       await new Promise((resolve, reject) => {
         const req = indexedDB.deleteDatabase('ssd-keyring');
         req.onsuccess = resolve;
         req.onerror   = () => reject(req.error);
-        req.onblocked = resolve; // proceed anyway
+        req.onblocked = resolve;
       });
       keyring._sessionKey = null;
     } catch(e) {
@@ -1659,1246 +1074,10 @@ const app = {
     }
     location.reload();
   },
-
-  async loadDevicesSection() {
-    const nameSetting = await db.get('settings', 'my_device_name');
-    const nameInput = document.getElementById('device-name-input');
-    if (nameInput && nameSetting) nameInput.value = nameSetting.value;
-  },
-
-  async generateDeviceKey(name) {
-    ui.clear();
-    ui.display('Generating keypair…');
-    try {
-      const rec = await keyring.createKey(name);
-      await this.loadKeyring();
-      ui.display(`<div class="ok">✓ Key <strong>${rec.name}</strong> created. Find it in Me → Keys.</div>`);
-    } catch(e) {
-      ui.display(`<span class="fail">Failed: ${e.message}</span>`);
-    }
-  },
-
-  async renameKey(keyId, newName) {
-    const rec = await db.get('my_keys', keyId);
-    if (!rec) return;
-    await db.put('my_keys', { ...rec, name: newName });
-    await this.loadKeyring();
-    ui.display(`<div class="ok">✓ Key renamed to <strong>${newName}</strong>. Same keypair — existing contacts and documents are unaffected.</div>`);
-  },
-
-  async saveDeviceName() {
-    const newName = document.getElementById('device-name-input').value.trim();
-    if (!newName) { ui.display('<span class="warn">Enter a name for this device.</span>'); return; }
-    const oldSetting = await db.get('settings', 'my_device_name');
-    const oldName = oldSetting?.value || null;
-    await db.put('settings', { key: 'my_device_name', value: newName });
-
-    const allKeys = await db.getAll('my_keys');
-    const newDKey = `D:${newName}`;
-    if (allKeys.some(k => k.name === newDKey)) {
-      ui.display('<div class="ok">✓ Device name saved.</div>');
-      return;
-    }
-    const oldDKey = oldName ? allKeys.find(k => k.name === `D:${oldName}`) : null;
-    if (oldDKey) {
-      ui.display(`<div class="ok">✓ Device name saved.</div>
-        <div style="margin-top:12px;padding:12px;border-radius:var(--radius);background:var(--surface-2)">
-          <div style="font-size:14px;margin-bottom:8px">Rename your device key to match?</div>
-          <div style="font-size:13px;color:var(--text-muted);margin-bottom:10px">Same keypair — your contacts and existing documents are unaffected.</div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <button onclick="app.renameKey('${oldDKey.id}','${newDKey}')">Rename to <strong>${newDKey}</strong></button>
-            <button class="btn-secondary" onclick="app.generateDeviceKey('${newDKey}')">Fresh keypair instead</button>
-            <a href="#" class="cancel-link" onclick="ui.clear();return false">Not now</a>
-          </div>
-        </div>`);
-    } else {
-      ui.display(`<div class="ok">✓ Device name saved.</div>
-        <div style="margin-top:12px;padding:12px;border-radius:var(--radius);background:var(--surface-2)">
-          <div style="font-size:14px;margin-bottom:8px">Generate a signing key for this device?</div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <button onclick="app.generateDeviceKey('${newDKey}')">Generate <strong>${newDKey}</strong></button>
-            <a href="#" class="cancel-link" onclick="ui.clear();return false">Not now</a>
-          </div>
-        </div>`);
-    }
-  },
-
-  async checkEncryptionKeyStatus() {
-    const el      = document.getElementById('enc-key-status');
-    const genUI   = document.getElementById('enc-key-generate-ui');
-    const resetUI = document.getElementById('enc-key-reset-ui');
-    if (!el) return;
-    const allKeys     = await db.getAll('encryption_keys');
-    const current     = allKeys.find(k => k.is_current);
-    const retiredCount = allKeys.filter(k => !k.is_current).length;
-    if (current) {
-      const fp = await cryptoOps.hash8(current.pub);
-      el.innerHTML = `<span class="ok">✓ Encryption key active</span> · <span class="mono" style="font-size:11px">${fp}</span>`;
-      if (genUI)   genUI.style.display   = 'none';
-      if (resetUI) resetUI.style.display = '';
-    } else {
-      el.textContent = 'No encryption key generated.';
-      if (genUI)   genUI.style.display   = '';
-      if (resetUI) resetUI.style.display = 'none';
-    }
-  },
-
-  async resetEncryptionKey() {
-    if (!confirm('Delete the current encryption key and generate a fresh one?\n\nOnly use this if the key is broken and cannot decrypt files. Any documents encrypted to the old key will be permanently inaccessible.')) return;
-    const allKeys = await db.getAll('encryption_keys');
-    for (const k of allKeys) {
-      if (k.is_current) await db.del('encryption_keys', k.pub);
-    }
-    await db.del('settings', 'my_encryption_key_pub');
-    await this._unlock();
-    await keyring.ensureEncryptionKey();
-    await this.checkEncryptionKeyStatus();
-    ui.display('<span class="ok">New encryption key generated.</span>');
-  },
-
-  async generateEncryptionKey() {
-    try {
-      await this._unlock();
-      await keyring.ensureEncryptionKey();
-      await this.checkEncryptionKeyStatus();
-      ui.display('<div class="ok">✓ Encryption key generated.</div>');
-    } catch(e) {
-      ui.display(`<span class="fail">Could not generate: ${e.message}</span>`);
-    }
-  },
-
-  async checkPasskeyStatus() {
-    const el = document.getElementById('passkey-status');
-    if (!el) return;
-    const cred = await db.get('settings', 'credential_id');
-    el.textContent = cred ? '✓ Passkey registered.' : 'No passkey registered.';
-    el.className = cred ? 'ok' : '';
-    const registerUI = document.getElementById('passkey-register-ui');
-    const replaceUI  = document.getElementById('passkey-replace-ui');
-    if (registerUI) registerUI.style.display = cred ? 'none' : '';
-    if (replaceUI)  replaceUI.style.display  = cred ? ''     : 'none';
-  },
-
-  async loadDocs() {
-    const list = document.getElementById('docs-list');
-    if (!list) return;
-    const [artifacts, drafts, socialPosts, myKeys] = await Promise.all([
-      db.getAll('artifacts'), db.getAll('drafts'), db.getAll('social_posts'), db.getAll('my_keys'),
-    ]);
-    const keyMap = new Map(myKeys.map(k => [k.id, k]));
-
-    // Merge and sort newest first
-    const items = [
-      ...drafts.map(d => ({ ...d, _type: 'draft', _date: d.updated })),
-      ...artifacts.map(a => ({ ...a, _type: 'artifact', _date: a.created })),
-      ...socialPosts.map(p => ({ ...p, _type: 'social', _date: p.updated || p.created })),
-    ].sort((a, b) => b._date.localeCompare(a._date));
-
-    if (!items.length) {
-      list.innerHTML = '<div class="empty-state"><p>No documents yet.</p></div>';
-      return;
-    }
-
-    list.innerHTML = '';
-    for (const item of items) {
-      const div = document.createElement('div');
-      div.className = 'key-card';
-      const date = new Date(item._date).toLocaleString();
-
-      if (item._type === 'social') {
-        const stageBadge = {
-          draft:     '<span class="badge">Draft</span>',
-          signed:    '<span class="badge badge-primary">Signed</span>',
-          published: '<span class="badge" style="background:rgba(76,175,119,.15);color:var(--success);border-color:rgba(76,175,119,.4)">Posted</span>',
-        }[item.status] || '<span class="badge">Draft</span>';
-        const signerKey = keyMap.get(item.keyId);
-        const signerLabel = signerKey
-          ? `${signerKey.name} <span class="mono" style="font-size:11px">${item.hash8 || signerKey.hash8}</span>`
-          : item.hash8 ? `<span class="mono" style="font-size:11px">${item.hash8}</span>` : '';
-        const hintLabel = item.identity ? ` · ${item.identity}` : '';
-        const resumeStage = item.status === 'signed' || item.status === 'published' ? 'result' : item.canonical ? 'confirm' : 'write';
-        const resumeLabel = { write: 'Edit', confirm: 'Review', result: 'Copy' }[resumeStage];
-        div.innerHTML = `
-          <div class="key-card-header" style="align-items:flex-start">
-            <div class="key-card-meta" style="flex:1">
-              <div style="font-size:12px;color:var(--text-muted)">${date}${stageBadge}</div>
-              <div style="font-size:14px;font-weight:500;margin-top:4px">${item.summary || '—'}</div>
-              <div style="font-size:12px;color:var(--text-muted);margin-top:6px">Post${signerLabel ? ' · ' + signerLabel : ''}${hintLabel}</div>
-            </div>
-          </div>
-          <div class="key-card-actions">
-            <button onclick="app.startSocialSign('${item.id}','${resumeStage}')">${resumeLabel}</button>
-            ${item.status === 'signed' ? `<button class="btn-secondary" onclick="app.startSocialSign('${item.id}','write')">Re-edit</button>` : ''}
-            ${item.status === 'signed' ? `<button class="btn-secondary" onclick="app._markPostedFromList('${item.id}')">Mark posted</button>` : ''}
-            <button class="btn-secondary" style="color:var(--danger)" onclick="app.deleteSocialPost('${item.id}')">Delete</button>
-          </div>`;
-      } else if (item._type === 'draft') {
-        div.innerHTML = `
-          <div class="key-card-header" style="align-items:flex-start">
-            <div class="key-card-meta" style="flex:1">
-              <div style="font-size:12px;color:var(--text-muted)">${date}</div>
-              <div style="font-size:14px;font-weight:500;margin-top:4px">${item.summary || '—'}</div>
-              <div style="font-size:12px;color:var(--text-muted);margin-top:6px"><span class="badge">Draft</span></div>
-            </div>
-          </div>
-          <div class="key-card-actions">
-            <button onclick="app.signDraft('${item.id}')">Sign</button>
-            <button class="btn-secondary" style="color:var(--danger)" onclick="app.deleteDraft('${item.id}')">Delete</button>
-          </div>`;
-      } else {
-        const sigKey = keyMap.get(item.signed_by_key_id);
-        const sigLabel = sigKey
-          ? `${sigKey.name} <span class="mono" style="font-size:11px">${item.hash8}</span>`
-          : `<span class="mono" style="font-size:11px">${item.hash8}</span>`;
-        const sealBadge = item.encrypted
-          ? `<span class="badge badge-primary" style="margin-left:6px;cursor:pointer" onclick="app.showSealedRecipients('${item.id}')">Sealed ▾</span>`
-          : '<span class="badge" style="margin-left:6px">Open</span>';
-        const sealAction = item.signed_by_key_id && item.render_spec !== 'ssd-key-transfer-1.0'
-          ? item.encrypted
-            ? `<button class="btn-secondary" onclick="app.sealExistingArtifact('${item.id}')">Reseal</button>`
-            : `<button class="btn-secondary" onclick="app.sealExistingArtifact('${item.id}')">Seal</button>`
-          : '';
-        div.innerHTML = `
-          <div class="key-card-header" style="align-items:flex-start">
-            <div class="key-card-meta" style="flex:1">
-              <div style="font-size:12px;color:var(--text-muted)">${date}</div>
-              <div style="font-size:14px;font-weight:500;margin-top:4px">${item.summary || '—'}</div>
-              <div style="font-size:12px;color:var(--text-muted);margin-top:6px">Signed by ${sigLabel}${sealBadge}</div>
-            </div>
-          </div>
-          <div class="key-card-actions">
-            ${sealAction}
-            <button class="btn-secondary" onclick="app.sendArtifact('${item.id}')">Send</button>
-            <button class="btn-secondary" style="color:var(--danger)" onclick="app.deleteDoc('${item.id}')">Delete</button>
-          </div>`;
-      }
-      list.appendChild(div);
-    }
-  },
-
-  async showSealedRecipients(id) {
-    const a = await db.get('artifacts', id);
-    if (!a) return;
-    const list = document.getElementById('recipients-modal-list');
-    if (!a.encrypted_for?.length) {
-      list.innerHTML = '<p class="muted">Recipient list not recorded (document sealed before v41).</p>';
-    } else {
-      const contacts = await db.getAll('contacts');
-      const contactMap = new Map(contacts.map(c => [c.id, c.local_name]));
-      const items = a.encrypted_for.map(id => {
-        const name = id === '__self__' ? 'Yourself (this device)' : (contactMap.get(id) || id);
-        return `<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:14px">${name}</div>`;
-      });
-      list.innerHTML = items.join('');
-    }
-    document.getElementById('recipients-modal').style.display = 'flex';
-  },
-
-  closeRecipientsModal() {
-    document.getElementById('recipients-modal').style.display = 'none';
-  },
-
-  async deleteDoc(id) {
-    const a = await db.get('artifacts', id);
-    if (!a) return;
-    if (!confirm('Delete this document record? The .ssd file you downloaded is not affected.')) return;
-    await db.del('artifacts', id);
-    if (a.opfs_path) {
-      try {
-        const root = await navigator.storage.getDirectory();
-        const parts = a.opfs_path.split('/').filter(Boolean);
-        let dir = root;
-        for (const p of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(p, { create: false });
-        await dir.removeEntry(parts[parts.length - 1]);
-      } catch { /* OPFS file may already be gone */ }
-    }
-    await this.loadDocs();
-  },
-
-  async loadContacts() {
-    const allKeys = await db.getAll('contact_keys');
-    const persons = await db.getAll('contacts');
-    const list = document.getElementById('contacts-list');
-    if (!list) return;
-
-    const activeKeys = allKeys.filter(k => !k.is_quarantined);
-    const quarantinedKeys = allKeys.filter(k => k.is_quarantined);
-
-    if (activeKeys.length === 0) {
-      list.innerHTML = '<div class="empty-state"><p>No contacts yet.</p><p style="margin-top:8px">Import a key card to add someone.</p></div>';
-    } else {
-      list.innerHTML = '';
-      // Group active keys by person
-      const byPerson = new Map();
-      for (const k of activeKeys) {
-        const pid = k.person_id || '_orphan';
-        if (!byPerson.has(pid)) byPerson.set(pid, []);
-        byPerson.get(pid).push(k);
-      }
-      for (const [pid, keys] of byPerson) {
-        const person = persons.find(p => p.id === pid) || { id: pid, local_name: keys[0].name };
-        list.appendChild(await this._buildPersonCard(person, keys));
-      }
-    }
-
-    const toggleBar = document.getElementById('quarantine-toggle-bar');
-    if (toggleBar) toggleBar.style.display = quarantinedKeys.length > 0 ? '' : 'none';
-    const qList = document.getElementById('quarantine-list');
-    if (qList && qList.style.display !== 'none') {
-      qList.innerHTML = '';
-      const qByPerson = new Map();
-      for (const k of quarantinedKeys) {
-        const pid = k.person_id || '_orphan';
-        if (!qByPerson.has(pid)) qByPerson.set(pid, []);
-        qByPerson.get(pid).push(k);
-      }
-      for (const [pid, keys] of qByPerson) {
-        const person = persons.find(p => p.id === pid) || { id: pid, local_name: keys[0].name };
-        qList.appendChild(await this._buildPersonCard(person, keys, true));
-      }
-    }
-  },
-
-  async _buildPersonCard(person, keys, quarantined = false) {
-    const div = document.createElement('div');
-    div.className = 'person-card';
-    const seed = await cryptoOps.identiconSeed(keys[0].public_key_b64);
-    const imgSrc = identicon.renderToDataURL(seed, 48);
-    const keyLabel = keys.length === 1 ? '1 key' : `${keys.length} keys`;
-    const keysHtml = keys.map(k => {
-      const via = { qr_scan: 'QR scan', paste: 'Pasted', file: 'File', manual: 'Manual', well_known: 'Web lookup' }[k.received_via] || k.received_via || 'Unknown';
-      const when = k.received_at ? new Date(k.received_at).toLocaleDateString() : '';
-      const qLabel = quarantined
-        ? `<div class="quarantine-label">⚠ ${k.quarantine_reason || 'Quarantined'}${k.quarantined_at ? ' · ' + new Date(k.quarantined_at).toLocaleDateString() : ''}</div>`
-        : '';
-      const actions = quarantined
-        ? `<button class="btn-secondary" onclick="app.showQuarantineDetail('${k.id}')">Detail</button>
-           <button class="btn-danger" onclick="app.deleteContact('${k.id}')">Delete</button>`
-        : `<button class="btn-secondary" onclick="app.showContactKeyQR('${k.id}')">Verify key</button>
-           <button class="btn-secondary" onclick="app.deleteContact('${k.id}')">Remove</button>`;
-      return `<div class="key-entry${quarantined ? ' quarantined' : ''}">
-        <div class="key-entry-header">
-          <div><div class="key-entry-name">${k.name}</div><div class="key-entry-fp">${k.hash8}</div></div>
-        </div>
-        <div class="key-entry-meta">${via}${when ? ' · ' + when : ''}${qLabel}</div>
-        <div class="key-entry-actions">${actions}</div>
-      </div>`;
-    }).join('');
-    div.innerHTML = `
-      <div class="person-card-header">
-        <img src="${imgSrc}" width="48" height="48" class="identicon" alt="">
-        <div style="flex:1"><div class="person-name">${person.local_name}</div><div class="person-key-count">${keyLabel}</div></div>
-        ${!quarantined ? `<button class="btn-secondary" style="font-size:11px;padding:4px 10px;flex-shrink:0" onclick="app.renameContact('${person.id}')">Rename</button>` : ''}
-      </div>
-      ${keysHtml}`;
-    return div;
-  },
-
-  showPasteImport() {
-    const el = document.getElementById('paste-import-area');
-    if (el) { el.style.display = ''; document.getElementById('paste-import-text').focus(); }
-  },
-
-  hidePasteImport() {
-    const el = document.getElementById('paste-import-area');
-    if (el) { el.style.display = 'none'; document.getElementById('paste-import-text').value = ''; }
-  },
-
-  async doImportPaste() {
-    const text = document.getElementById('paste-import-text').value.trim();
-    if (!text) { ui.display('<span class="warn">Paste a key card first.</span>'); return; }
-    let card;
-    try { card = JSON.parse(text); } catch { ui.display('<span class="fail">Not valid JSON.</span>'); return; }
-    await this.importContactCard(card, 'paste');
-  },
-
-  async importContactCard(card, receivedVia = 'paste') {
-    ui.clear();
-    if (!card.public_key || !card.name) {
-      ui.display('<span class="fail">Invalid key card — missing required fields.</span>'); return;
-    }
-    if (!card.hash8) {
-      card.hash8 = await cryptoOps.hash8(card.public_key);
-    }
-    if (card.self_signed) {
-      const normalized = {
-        chain:                 card.chain                 ?? [],
-        encryption_key:        card.encryption_key        ?? null,
-        expires:               card.expires               ?? null,
-        hash8:                 card.hash8,
-        identicon_algorithm:   card.identicon_algorithm   ?? 'ssd-identicon-1.0',
-        issued:                card.issued,
-        name:                  card.name,
-        public_key:            card.public_key,
-        recheck_interval_days: card.recheck_interval_days ?? 90,
-        revocation_hint:       card.revocation_hint       ?? null,
-        self_image:            card.self_image            ?? null,
-        self_signed:           card.self_signed,
-        signing_algorithm:     card.signing_algorithm     ?? 'Ed25519',
-        version:               card.version               ?? '1.0',
-      };
-      const valid = await keyring.verifyKeyCard(normalized);
-      if (!valid) {
-        ui.display('<span class="fail">Key card signature is invalid — this may have been tampered with.</span>'); return;
-      }
-      const fp = await cryptoOps.hash8(card.public_key);
-      if (fp !== card.hash8) {
-        ui.display('<span class="fail">Fingerprint does not match the public key — corrupt key card.</span>'); return;
-      }
-    }
-    const existing = (await db.getAll('contact_keys')).find(c => c.hash8 === card.hash8);
-    if (existing) {
-      ui.display(`<span class="warn">Already have a key with hash8 ${card.hash8}.</span>`); return;
-    }
-    const myKeys = await db.getAll('my_keys');
-    if (myKeys.find(k => k.hash8 === card.hash8)) {
-      ui.display('<span class="warn">This is one of your own keys.</span>'); return;
-    }
-    this.hidePasteImport();
-    await this._showPersonPicker(card, receivedVia);
-  },
-
-  async _showPersonPicker(card, receivedVia) {
-    this._pendingImport = { card, receivedVia };
-    const persons = await db.getAll('contacts');
-    const sel = document.getElementById('person-picker-select');
-    const existingGroup = document.getElementById('person-picker-existing');
-    const nameInput = document.getElementById('person-picker-name');
-    const nameLabel = document.getElementById('person-picker-name-label');
-    sel.innerHTML = '<option value="">— Add as new person —</option>';
-    persons.forEach(p => sel.appendChild(Object.assign(document.createElement('option'), { value: p.id, textContent: p.local_name })));
-    if (existingGroup) existingGroup.style.display = persons.length ? '' : 'none';
-    nameInput.value = card.deviceName || card.name;
-    nameLabel.textContent = persons.length ? 'Or create new person' : 'Their name';
-    const keyInfoEl = document.getElementById('person-picker-key-info');
-    if (keyInfoEl) keyInfoEl.textContent = card.deviceName ? `Key: ${card.name}` : '';
-    document.getElementById('person-picker').style.display = '';
-    nameInput.focus();
-  },
-
-  _onPersonPickerSelect() {
-    const sel = document.getElementById('person-picker-select');
-    const nameGroup = document.getElementById('person-picker-name-group');
-    nameGroup.style.display = sel.value ? 'none' : '';
-  },
-
-  async confirmPersonPick() {
-    if (!this._pendingImport) return;
-    const { card, receivedVia } = this._pendingImport;
-    const sel = document.getElementById('person-picker-select');
-    let personId = sel ? sel.value : '';
-    if (!personId) {
-      const name = document.getElementById('person-picker-name').value.trim();
-      if (!name) { ui.display('<span class="warn">Enter a name for this person.</span>'); return; }
-      personId = window.crypto.randomUUID();
-      await db.put('contacts', { id: personId, local_name: name, notes: null, created: new Date().toISOString(), external_id: null });
-    }
-    await this._saveContactKey(card, receivedVia, personId);
-  },
-
-  cancelPersonPick() {
-    this._pendingImport = null;
-    document.getElementById('person-picker').style.display = 'none';
-    this.loadContacts();
-  },
-
-  async _saveContactKey(card, receivedVia, personId) {
-    await db.put('contact_keys', {
-      id: window.crypto.randomUUID(), person_id: personId,
-      name: card.name, hash8: card.hash8,
-      public_key_b64: card.public_key,
-      identicon_algorithm: card.identicon_algorithm || 'ssd-identicon-1.0',
-      self_image_b64: card.self_image || null, received_via: receivedVia,
-      received_at: new Date().toISOString(), expires: card.expires || null,
-      recheck_interval_days: card.recheck_interval_days || 90,
-      last_checked: new Date().toISOString(), revocation_hint: card.revocation_hint || null,
-      trust_type: 'peer', local_label: null, local_identicon_algorithm: null,
-      countersignatures: [], is_revoked: false, is_quarantined: false,
-      quarantined_at: null, quarantine_reason: null,
-    });
-    // Store encryption key on the person record (one per person, not per key)
-    if (card.encryption_key) {
-      const person = await db.get('contacts', personId);
-      if (person && !person.encryption_key_pub) {
-        await db.put('contacts', { ...person, encryption_key_pub: card.encryption_key });
-      }
-    }
-    const person = await db.get('contacts', personId);
-    this._pendingImport = null;
-    document.getElementById('person-picker').style.display = 'none';
-    ui.display(`<div class="ok">✓ Added: <strong>${card.name}</strong> [<span class="mono">${card.hash8}</span>] under <strong>${person.local_name}</strong></div>`);
-    await this.loadContacts();
-  },
-
-  async showKeyCardQR(keyId) {
-    try {
-      await this._unlock();
-      const card = await keyring.exportKeyCard(keyId);
-      const deviceNameSetting = await db.get('settings', 'my_device_name');
-      const deviceName = deviceNameSetting ? deviceNameSetting.value : null;
-
-      const qrPayload = JSON.stringify({ ssd: 'qr1', n: card.name, k: card.public_key, ...(card.encryption_key ? { ek: card.encryption_key } : {}), ...(deviceName ? { dn: deviceName } : {}) });
-      log('QR payload bytes:', qrPayload.length);
-      await this._showQRModal('Your key card', `Share this so contacts can verify your identity. Fingerprint: ${card.hash8}`, qrPayload, null);
-    } catch(e) {
-      ui.display(`<span class="fail">Could not generate QR: ${e.message}</span>`);
-      console.error(e);
-    }
-  },
-
-  async showContactKeyQR(contactId) {
-    const rec = await db.get('contact_keys', contactId);
-    if (!rec) return;
-    const payload = JSON.stringify({ hash8: rec.hash8, name: rec.name, public_key: rec.public_key_b64, encryption_key: rec.encryption_key_b64 || null });
-    await this._showQRModal(
-      `Verify: ${rec.name}`,
-      `Show this to ${rec.name} and ask if it matches their key. If they say no, tap "That's not my key".`,
-      payload, contactId
-    );
-  },
-
-  async _showQRModal(title, desc, data, contactId) {
-    document.getElementById('qr-modal-title').textContent = title;
-    document.getElementById('qr-modal-desc').textContent = desc;
-    const wrongWrap = document.getElementById('qr-wrong-btn-wrap');
-    const wrongBtn  = document.getElementById('qr-wrong-btn');
-    if (wrongWrap && wrongBtn) {
-      if (contactId) {
-        wrongWrap.style.display = '';
-        wrongBtn.onclick = () => { app.closeQRModal(); app.promptQuarantine(contactId); };
-      } else {
-        wrongWrap.style.display = 'none';
-      }
-    }
-    if (typeof qrcode === 'undefined') {
-      ui.display('<span class="fail">QR library did not load — check your connection and reload.</span>'); return;
-    }
-
-    // data may be a string (single) or array of {payload, label} for cycling
-    const payloads = Array.isArray(data) ? data : [{ payload: data, label: null }];
-    const canvas    = document.getElementById('qr-canvas');
-    const cycleWrap = document.getElementById('qr-cycle-wrap');
-    const cycleDots = document.getElementById('qr-cycle-dots');
-
-    const renderPayload = (idx) => {
-      const { payload, label } = payloads[idx];
-      log('QR render — slot', idx + 1, 'of', payloads.length, '— bytes:', payload.length, label ? '(' + label + ')' : '');
-      canvas.innerHTML = '';
-      try {
-        const qr = qrcode(0, 'M');
-        qr.addData(payload, 'Byte');
-        qr.make();
-
-        const modules  = qr.getModuleCount();
-        const margin   = 4;
-        const total    = modules + margin * 2;
-        const cssSize  = Math.min(window.innerWidth - 48, 300);
-        const dpr      = window.devicePixelRatio || 1;
-        const cell     = Math.max(1, Math.floor((cssSize * dpr) / total));
-        const side     = total * cell;
-
-        const cvs = document.createElement('canvas');
-        cvs.width  = side;
-        cvs.height = side;
-        cvs.style.width        = Math.round(side / dpr) + 'px';
-        cvs.style.height       = Math.round(side / dpr) + 'px';
-        cvs.style.borderRadius = '4px';
-        cvs.style.imageRendering = 'pixelated';
-
-        const ctx = cvs.getContext('2d');
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, side, side);
-        ctx.fillStyle = '#000000';
-        for (let r = 0; r < modules; r++) {
-          for (let c = 0; c < modules; c++) {
-            if (qr.isDark(r, c)) {
-              ctx.fillRect((margin + c) * cell, (margin + r) * cell, cell, cell);
-            }
-          }
-        }
-        canvas.appendChild(cvs);
-      } catch(e) {
-        log('QR generation error:', e.message);
-        ui.display(`<span class="fail">QR generation failed: ${e.message}</span>`);
-      }
-      if (cycleWrap && cycleDots && payloads.length > 1) {
-        cycleWrap.style.display = '';
-        cycleDots.textContent = payloads.map((p, i) => i === idx ? '●' : '○').join('  ') + (label ? '  ' + label : '');
-      } else if (cycleWrap) {
-        cycleWrap.style.display = 'none';
-      }
-    };
-
-    if (this._qrCycleInterval) { clearInterval(this._qrCycleInterval); this._qrCycleInterval = null; }
-    let cycleIdx = 0;
-    renderPayload(0);
-    if (payloads.length > 1) {
-      this._qrCycleInterval = setInterval(() => {
-        cycleIdx = (cycleIdx + 1) % payloads.length;
-        renderPayload(cycleIdx);
-      }, 2000);
-    }
-    document.getElementById('qr-modal').style.display = 'flex';
-  },
-
-  closeQRModal() {
-    if (this._qrCycleInterval) { clearInterval(this._qrCycleInterval); this._qrCycleInterval = null; }
-    document.getElementById('qr-modal').style.display = 'none';
-  },
-
-  async promptQuarantine(contactId) {
-    const rec = await db.get('contact_keys', contactId);
-    if (!rec) return;
-    if (!confirm(`Move ${rec.name} [${rec.hash8}] to quarantine?\n\nThis key will no longer be trusted. The record is kept so you can trace where it came from.`)) return;
-    await this.quarantineContact(contactId, 'verification failed — key not recognised by owner');
-  },
-
-  async quarantineContact(contactId, reason) {
-    const rec = await db.get('contact_keys', contactId);
-    if (!rec) return;
-    await db.put('contact_keys', { ...rec, is_quarantined: true, quarantined_at: new Date().toISOString(), quarantine_reason: reason });
-    const artifacts = await db.getAll('artifacts');
-    const affected = artifacts.filter(a => a.signed_by_key_id === contactId || a.hash8 === rec.hash8);
-    ui.clear();
-    let msg = `<div class="ok">Key moved to quarantine.</div>`;
-    if (affected.length > 0) {
-      msg += `<div class="warn" style="margin-top:10px">⚠ ${affected.length} document${affected.length !== 1 ? 's' : ''} previously verified with this key are now suspect:</div>`;
-      msg += '<ul style="font-size:12px;margin-top:6px;padding-left:20px;color:var(--warning)">';
-      for (const a of affected.slice(0, 10)) msg += `<li>${new Date(a.created).toLocaleDateString()} — ${a.summary || '(no summary)'}</li>`;
-      if (affected.length > 10) msg += `<li>…and ${affected.length - 10} more</li>`;
-      msg += '</ul>';
-    }
-    msg += `<div style="margin-top:10px;font-size:12px;color:var(--text-muted)">Provenance: received ${rec.received_via || 'via unknown method'} on ${rec.received_at ? new Date(rec.received_at).toLocaleDateString() : 'unknown date'}. Keep this record if you are investigating.</div>`;
-    ui.display(msg);
-    ui.showSection('contacts');
-  },
-
-  async showQuarantineDetail(contactId) {
-    const rec = await db.get('contact_keys', contactId);
-    if (!rec) return;
-    const artifacts = await db.getAll('artifacts');
-    const affected = artifacts.filter(a => a.signed_by_key_id === contactId || a.hash8 === rec.hash8);
-    ui.clear();
-    let msg = `<div class="verify-result">`;
-    msg += `<div><strong>${rec.name}</strong> · <span class="mono">${rec.hash8}</span></div>`;
-    msg += `<div class="fail" style="margin-top:6px">⚠ ${rec.quarantine_reason || 'Flagged as suspect'}</div>`;
-    msg += `<div style="margin-top:10px"><strong>How this key reached you</strong></div>`;
-    const via = { qr_scan: 'QR scan', paste: 'Paste', file: 'File import' }[rec.received_via] || rec.received_via || 'Unknown';
-    msg += `<div class="info">${via} · ${rec.received_at ? new Date(rec.received_at).toLocaleString() : 'unknown'}</div>`;
-    if (affected.length > 0) {
-      msg += `<div style="margin-top:10px"><strong>Documents verified with this key</strong></div>`;
-      for (const a of affected) msg += `<div style="font-size:12px;color:var(--warning);margin-top:4px">⚠ ${new Date(a.created).toLocaleDateString()} — ${a.summary || '(no summary)'}</div>`;
-    } else {
-      msg += `<div class="info" style="margin-top:8px;font-size:12px">No documents were verified using this key.</div>`;
-    }
-    msg += `</div>`;
-    ui.display(msg);
-  },
-
-  async deleteContact(contactId) {
-    const rec = await db.get('contact_keys', contactId);
-    if (!rec) return;
-    const person = rec.person_id ? await db.get('contacts', rec.person_id) : null;
-    const label = person ? `${person.local_name} — ${rec.name}` : rec.name;
-    if (!confirm(`Permanently delete ${label} [${rec.hash8}]? This cannot be undone.`)) return;
-    await db.del('contact_keys', contactId);
-    // Remove the person record if this was their only key
-    if (rec.person_id) {
-      const remaining = (await db.getAll('contact_keys')).filter(k => k.person_id === rec.person_id);
-      if (remaining.length === 0) await db.del('contacts', rec.person_id);
-    }
-    ui.clear();
-    ui.display('<div class="ok">Key removed.</div>');
-    await this.loadContacts();
-  },
-
-  toggleQuarantine() {
-    const list = document.getElementById('quarantine-list');
-    const btn  = document.getElementById('quarantine-toggle-btn');
-    if (!list || !btn) return;
-    const showing = list.style.display !== 'none';
-    list.style.display = showing ? 'none' : '';
-    btn.textContent = showing ? 'Show quarantined keys' : 'Hide quarantined keys';
-    if (!showing) this.loadContacts();
-  },
-
-  async startQRScan(onScan = null) {
-    const modal  = document.getElementById('scan-modal');
-    const video  = document.getElementById('scan-video');
-    const status = document.getElementById('scan-status');
-    if (!modal || !video) return;
-    this._scanCallback = onScan;
-    modal.style.display = 'flex';
-    status.textContent = 'Requesting camera…';
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      video.srcObject = stream;
-      this._scanStream = stream;
-      this._scanRunning = true;
-      if ('BarcodeDetector' in window) {
-        this._barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
-        log('scanner: BarcodeDetector');
-      } else {
-        this._barcodeDetector = null;
-        log('scanner: jsQR fallback');
-      }
-      status.textContent = 'Point at a QR code…';
-      this._scanFrame = 0;
-      requestAnimationFrame(() => this._doScanLoop());
-    } catch(e) {
-      log('camera error:', e.message);
-      status.textContent = 'Camera not available: ' + e.message;
-    }
-  },
-
-  _doScanLoop() {
-    if (!this._scanRunning) return;
-    const video = document.getElementById('scan-video');
-    this._scanFrame = (this._scanFrame || 0) + 1;
-    const f = this._scanFrame;
-
-    if (!video) { log('scan abort: no video element'); return; }
-
-    if (video.readyState < 2) {
-      if (f === 1 || f % 60 === 0) log('scan f'+f+' waiting — readyState', video.readyState);
-      requestAnimationFrame(() => this._doScanLoop());
-      return;
-    }
-
-    const w = video.videoWidth, h = video.videoHeight;
-    if (!w || !h) {
-      if (f % 60 === 0) log('scan f'+f+' — no dimensions, readyState', video.readyState);
-      requestAnimationFrame(() => this._doScanLoop());
-      return;
-    }
-
-    const canvas = document.getElementById('scan-canvas');
-    if (!canvas) { log('scan abort: no canvas'); return; }
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, w, h);
-
-    // Sample center + corners to verify we have real image data
-    if (f === 1 || f % 60 === 0) {
-      const c  = ctx.getImageData(Math.floor(w/2), Math.floor(h/2), 1, 1).data;
-      const tl = ctx.getImageData(10, 10, 1, 1).data;
-      const br = ctx.getImageData(w-10, h-10, 1, 1).data;
-      log('scan f'+f+' '+w+'×'+h+' readyState '+video.readyState
-        +' | center('+c[0]+','+c[1]+','+c[2]+')'
-        +' tl('+tl[0]+','+tl[1]+','+tl[2]+')'
-        +' br('+br[0]+','+br[1]+','+br[2]+')');
-    }
-
-    if (this._barcodeDetector) {
-      this._barcodeDetector.detect(canvas)
-        .then(codes => {
-          if (!this._scanRunning) return;
-          if (codes.length) {
-            log('decoded (BarcodeDetector):', codes[0].rawValue.slice(0, 80));
-            this.stopQRScan();
-            this._handleScannedQR(codes[0].rawValue);
-            return;
-          }
-          // BarcodeDetector found nothing — try jsQR on same captured frame
-          if (typeof jsQR !== 'undefined') {
-            const img = ctx.getImageData(0, 0, w, h);
-            const code = jsQR(img.data, w, h);
-            if (code) {
-              log('decoded (jsQR):', code.data.slice(0, 80));
-              this.stopQRScan();
-              this._handleScannedQR(code.data);
-              return;
-            }
-          }
-          if (f % 60 === 0) log('scan f'+f+' — both detectors: no code');
-          requestAnimationFrame(() => this._doScanLoop());
-        })
-        .catch(e => { log('detect err f'+f+':', e.message); requestAnimationFrame(() => this._doScanLoop()); });
-      return;
-    }
-
-    // jsQR only (no BarcodeDetector)
-    if (typeof jsQR !== 'undefined') {
-      const img = ctx.getImageData(0, 0, w, h);
-      const code = jsQR(img.data, w, h);
-      if (code) {
-        log('decoded (jsQR):', code.data.slice(0, 80));
-        this.stopQRScan();
-        this._handleScannedQR(code.data);
-        return;
-      }
-    } else {
-      log('scan abort: jsQR not available and no BarcodeDetector');
-      return;
-    }
-    if (f % 60 === 0) log('scan f'+f+' — jsQR: no code');
-    requestAnimationFrame(() => this._doScanLoop());
-  },
-
-  stopQRScan() {
-    this._scanRunning = false;
-    this._barcodeDetector = null;
-    if (this._scanStream) { this._scanStream.getTracks().forEach(t => t.stop()); this._scanStream = null; }
-    const modal = document.getElementById('scan-modal');
-    if (modal) modal.style.display = 'none';
-    const h3 = document.querySelector('#scan-modal h3');
-    if (h3) h3.textContent = 'Scan Key Card';
-    const status = document.getElementById('scan-status');
-    if (status) status.textContent = 'Point your camera at a key card QR code.';
-  },
-
-  async _handleScannedQR(data) {
-    if (this._scanCallback) {
-      const cb = this._scanCallback;
-      this._scanCallback = null;
-      cb(data);
-      return;
-    }
-    let card;
-    try { card = JSON.parse(data); } catch {
-      ui.showSection('contacts');
-      ui.display('<span class="fail">QR code is not a valid key card.</span>');
-      return;
-    }
-    // Compact QR format: {ssd:'qr1', n:key_name, k:public_key, ek?:encryption_key, dn?:device_name}
-    if (card.ssd === 'qr1') {
-      card = { name: card.n, public_key: card.k, ...(card.ek ? { encryption_key: card.ek } : {}), ...(card.dn ? { deviceName: card.dn } : {}) };
-    }
-    ui.showSection('contacts');
-    await this.importContactCard(card, 'qr_scan');
-  },
-
-  async validateKey(keyId) {
-    const rec = await db.get('my_keys', keyId);
-    if (!rec) return;
-    const resultEl = document.getElementById('validate-result');
-    if (resultEl) { resultEl.style.display = 'none'; resultEl.textContent = ''; }
-
-    const scanTitle = document.querySelector('#scan-modal h3');
-    const scanStatus = document.getElementById('scan-status');
-    if (scanTitle) scanTitle.textContent = 'Validate Key';
-    if (scanStatus) scanStatus.textContent = 'Show this key\'s QR on another device, then point camera at it.';
-
-    await this.startQRScan(data => {
-      ui.showSection('keyring');
-      if (!resultEl) return;
-      let scanned;
-      try { scanned = JSON.parse(data); } catch {
-        resultEl.innerHTML = '<span class="fail">Not a valid key card QR.</span>';
-        resultEl.style.display = 'block';
-        return;
-      }
-      const scannedKey = scanned.ssd === 'qr1' ? scanned.k : scanned.public_key;
-      if (!scannedKey) {
-        resultEl.innerHTML = '<span class="fail">QR does not contain a public key.</span>';
-        resultEl.style.display = 'block';
-        return;
-      }
-      if (scannedKey === rec.public_key_b64) {
-        resultEl.innerHTML = `<span class="ok">&#10003; Confirmed — the scanned QR matches <strong>${rec.name}</strong>.</span>`;
-      } else {
-        resultEl.innerHTML = `<span class="fail">&#10005; Mismatch — the scanned QR does not match <strong>${rec.name}</strong>.</span>`;
-      }
-      resultEl.style.display = 'block';
-    });
-  },
-
-  _showWebAuthnBanner() {
-    const banner = document.getElementById('webauthn-banner');
-    const link   = document.getElementById('webauthn-banner-link');
-    if (banner && link) { link.href = location.href; banner.style.display = ''; }
-  },
-
-  // ── Social signing ────────────────────────────────────────────────────────
-
-  _socialPostId: null, // id of the social_posts record currently being edited
-  _socialReplyResult: null,
-
-  _showSocialResult(body, replyToken) {
-    this._socialResult = body;
-    this._socialReplyResult = replyToken || null;
-    document.getElementById('social-result-text').textContent = body;
-    document.getElementById('social-copy-status').textContent = '';
-    const replyBlock = document.getElementById('social-result-reply-block');
-    const replyBtn   = document.getElementById('social-reply-copy-btn');
-    if (replyToken) {
-      document.getElementById('social-result-reply-text').textContent = replyToken;
-      document.getElementById('social-reply-copy-status').textContent = '';
-      replyBlock.style.display = '';
-      replyBtn.style.display   = '';
-    } else {
-      replyBlock.style.display = 'none';
-      replyBtn.style.display   = 'none';
-    }
-  },
-
-  async startSocialSign(postId = null, stage = 'write') {
-    if (postId) {
-      const post = await db.get('social_posts', postId);
-      if (!post) { ui.showSection('docs'); return; }
-      this._socialPostId = postId;
-      await this.loadSocialKeys(post.keyId);
-      document.getElementById('social-identity').value = post.identity || '';
-      document.getElementById('social-text').value = post.text || '';
-      document.getElementById('social-sign-heading').textContent = 'Edit Post';
-      if (stage === 'confirm' && post.canonical) {
-        this._socialCtx = { keyId: post.keyId, canonical: post.canonical, identity: post.identity };
-        document.getElementById('social-confirm-blanks-note').style.display = 'none';
-        document.getElementById('social-confirm-render').textContent = post.canonical;
-        ui.showSection('socialConfirm');
-        return;
-      }
-      if (stage === 'result' && post.fullPost) {
-        this._socialCtx = { keyId: post.keyId, canonical: post.canonical, identity: post.identity };
-        const isTwitter = /^(tw|x):/.test(post.identity || '');
-        this._showSocialResult(
-          isTwitter ? post.canonical : post.fullPost,
-          isTwitter ? post.token    : null
-        );
-        ui.showSection('socialResult');
-        return;
-      }
-      ui.showSection('socialSign');
-    } else {
-      this._socialPostId = null;
-      document.getElementById('social-sign-heading').textContent = 'New Post';
-      await this.loadSocialKeys();
-      document.getElementById('social-text').value = '';
-      ui.showSection('socialSign');
-    }
-  },
-
-  async loadSocialKeys(selectKeyId = null) {
-    const sel = document.getElementById('social-key-select');
-    const keys = await db.getAll('my_keys');
-    sel.innerHTML = keys.length
-      ? keys.map(k => {
-          const selected = selectKeyId ? k.id === selectKeyId : k.is_default;
-          return `<option value="${k.id}"${selected ? ' selected' : ''}>${k.name} [${k.hash8}]</option>`;
-        }).join('')
-      : '<option value="">— No keys —</option>';
-    await this.onSocialKeyChange(/* suppressIfUserEdited */ false);
-  },
-
-  async onSocialKeyChange(suppressIfUserEdited = true) {
-    const sel      = document.getElementById('social-key-select');
-    const hintEl   = document.getElementById('social-identity');
-    if (!sel.value) return;
-    // Only auto-fill if the field is empty or hasn't been manually edited
-    if (suppressIfUserEdited && hintEl.dataset.userEdited === 'true') return;
-    const rec = await db.get('my_keys', sel.value);
-    if (rec && rec.identity) {
-      hintEl.value = rec.identity;
-    } else {
-      // Fall back to the last-used identity hint for this key
-      const saved = await db.get('settings', `social_identity_${sel.value}`);
-      if (saved) hintEl.value = saved.value;
-      else {
-        const global = await db.get('settings', 'social_identity');
-        if (global && !hintEl.value) hintEl.value = global.value;
-      }
-    }
-    hintEl.dataset.userEdited = 'false';
-  },
-
-  async saveSocialDraft() {
-    const text     = document.getElementById('social-text').value;
-    const keyId    = document.getElementById('social-key-select').value;
-    const identity = document.getElementById('social-identity').value.trim();
-    const now = new Date().toISOString();
-    const id  = this._socialPostId || crypto.randomUUID();
-    const existing = this._socialPostId ? await db.get('social_posts', id) : null;
-    await db.put('social_posts', {
-      ...(existing || {}),
-      id, status: 'draft', keyId, identity, text,
-      canonical: null, token: null, fullPost: null,
-      summary: text.trim().slice(0, 80),
-      created: existing?.created || now, updated: now,
-    });
-    this._socialPostId = id;
-    ui.showSection('docs');
-  },
-
-  async saveSocialAtConfirm() {
-    if (!this._socialCtx) { ui.showSection('docs'); return; }
-    const { keyId, canonical, identity } = this._socialCtx;
-    const text = document.getElementById('social-text').value;
-    const now  = new Date().toISOString();
-    const id   = this._socialPostId || crypto.randomUUID();
-    const existing = this._socialPostId ? await db.get('social_posts', id) : null;
-    await db.put('social_posts', {
-      ...(existing || {}),
-      id, status: 'draft', keyId, identity, text, canonical,
-      token: null, fullPost: null,
-      summary: canonical.trim().slice(0, 80),
-      created: existing?.created || now, updated: now,
-    });
-    this._socialPostId = id;
-    ui.showSection('docs');
-  },
-
-  async previewSocialSign() {
-    const text     = document.getElementById('social-text').value;
-    const keyId    = document.getElementById('social-key-select').value;
-    const identity = document.getElementById('social-identity').value.trim();
-    if (!text.trim()) { ui.display('<span class="warn">Please enter post text.</span>'); return; }
-    if (!keyId)       { ui.display('<span class="warn">Please select a signing key.</span>'); return; }
-    if (!identity)    { ui.display('<span class="warn">Please enter an identity hint.</span>'); return; }
-
-    // Save hint against the key so it auto-fills next time
-    await db.put('settings', { key: `social_identity_${keyId}`, value: identity });
-    await db.put('settings', { key: 'social_identity', value: identity });
-    const rec = await db.get('my_keys', keyId);
-    if (rec && rec.identity !== identity) {
-      await db.put('my_keys', { ...rec, identity });
-    }
-
-    const normalised = text.replace(/\n{3,}/g, '\n\n');
-    const blanksCollapsed = normalised !== text;
-    const canonical = signer.canonicalise(normalised);
-    this._socialCtx = { keyId, canonical, identity };
-    document.getElementById('social-confirm-blanks-note').style.display = blanksCollapsed ? '' : 'none';
-    document.getElementById('social-confirm-render').textContent = canonical;
-    ui.showSection('socialConfirm');
-  },
-
-  async confirmSocialSign() {
-    if (!this._socialCtx) { ui.showSection('socialSign'); return; }
-    const { keyId, canonical, identity } = this._socialCtx;
-    ui.showSection('socialConfirm');
-    ui.display('Signing…');
-    try {
-      await this._unlock();
-      const rec = await db.get('my_keys', keyId);
-      if (!rec) throw new Error('Key not found.');
-
-      const timestamp   = new Date().toISOString().slice(0, 16) + 'Z';
-      const hashBuf     = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
-      const contentHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,'0')).join('');
-      const signedBytes = new TextEncoder().encode(`${rec.hash8}:${identity}:${contentHash}:${timestamp}`);
-      const privateKey  = await keyring.getPrivateKey(keyId);
-      const sig         = await cryptoOps.sign(privateKey, signedBytes);
-
-      const content8 = contentHash.slice(0, 8);
-      const token    = `[SSD:${rec.hash8}:${identity}:${content8}:${sig}:${timestamp}]`;
-      const fullPost = canonical.trimEnd() + '\n\n' + token;
-
-      // Persist signed state
-      const now = new Date().toISOString();
-      const id  = this._socialPostId || crypto.randomUUID();
-      const existing = this._socialPostId ? await db.get('social_posts', id) : null;
-      const text = document.getElementById('social-text').value;
-      await db.put('social_posts', {
-        ...(existing || {}),
-        id, status: 'signed', keyId, hash8: rec.hash8,
-        identity, text, canonical, token, fullPost,
-        summary: canonical.trim().slice(0, 80),
-        created: existing?.created || now, updated: now,
-      });
-      this._socialPostId = id;
-      const isTwitter = /^(tw|x):/.test(identity);
-      this._showSocialResult(
-        isTwitter ? canonical : fullPost,
-        isTwitter ? token     : null
-      );
-      ui.clear();
-      ui.showSection('socialResult');
-    } catch (e) {
-      ui.clear();
-      ui.display(`<span class="fail">Signing failed: ${e.message}</span>`);
-      console.error(e);
-    }
-  },
-
-  async copySocialPost() {
-    if (!this._socialResult) return;
-    const statusEl = document.getElementById('social-copy-status');
-    try {
-      await navigator.clipboard.writeText(this._socialResult);
-      if (statusEl) { statusEl.textContent = '✓ Copied to clipboard'; statusEl.className = 'ok'; }
-    } catch {
-      if (statusEl) { statusEl.textContent = 'Copy failed — select and copy manually.'; statusEl.className = 'fail'; }
-    }
-  },
-
-  async copyTweetReply() {
-    if (!this._socialReplyResult) return;
-    const statusEl = document.getElementById('social-reply-copy-status');
-    try {
-      await navigator.clipboard.writeText(this._socialReplyResult);
-      if (statusEl) { statusEl.textContent = '✓ Copied to clipboard'; statusEl.className = 'ok'; }
-    } catch {
-      if (statusEl) { statusEl.textContent = 'Copy failed — select and copy manually.'; statusEl.className = 'fail'; }
-    }
-  },
-
-  async markSocialPosted() {
-    if (this._socialPostId) {
-      const post = await db.get('social_posts', this._socialPostId);
-      if (post) await db.put('social_posts', { ...post, status: 'published', updated: new Date().toISOString() });
-    }
-    ui.showSection('docs');
-  },
-
-  async _markPostedFromList(id) {
-    const post = await db.get('social_posts', id);
-    if (post) await db.put('social_posts', { ...post, status: 'published', updated: new Date().toISOString() });
-    await this.loadDocs();
-  },
-
-  async deleteSocialPost(id) {
-    if (!confirm('Delete this post? It cannot be recovered.')) return;
-    await db.del('social_posts', id);
-    await this.loadDocs();
-  },
-
-  async verifySocialPost() {
-    const text = document.getElementById('social-verify-text').value;
-    const out  = document.getElementById('social-verify-result');
-    out.innerHTML = '';
-
-    const TOKEN_RE = /\[SSD:([0-9A-Fa-f]{8}):(.+?):([0-9a-f]{8}):([A-Za-z0-9_-]+):(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z)\]/;
-    const m = text.match(TOKEN_RE);
-    if (!m) {
-      out.innerHTML = '<div class="verify-result"><div class="fail">✗ No SSD token found in the pasted text.</div></div>';
-      return;
-    }
-
-    const [raw, hash8, identity, content8, sig, timestamp] = m;
-    const preToken = text.slice(0, text.lastIndexOf(raw)).trim();
-    const canonical = signer.canonicalise(preToken);
-
-    const hashBuf     = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
-    const contentHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,'0')).join('');
-
-    let html = '<div class="verify-result">';
-
-    // Token parse
-    html += `<div class="info">Token found · Signer hint: <span class="mono">${identity}</span></div>`;
-    html += `<div class="info">Timestamp: ${timestamp}</div>`;
-
-    // Content hash check
-    if (contentHash.slice(0, 8) === content8) {
-      html += '<div class="ok">✓ Content hash matches — post not modified</div>';
-    } else {
-      html += '<div class="fail">✗ Content hash mismatch — post may have been edited after signing</div>';
-      html += '</div>';
-      out.innerHTML = html;
-      return;
-    }
-
-    // Key lookup
-    const myKeys      = await db.getAll('my_keys');
-    const contactKeys = await db.getAll('contact_keys');
-    const signerRec   = [...myKeys, ...contactKeys].find(k => k.hash8 === hash8);
-
-    if (!signerRec) {
-      html += `<div class="warn">⚠ Key <span class="mono">${hash8}</span> not in your keyring — cannot verify signature.</div>`;
-      html += `<div class="info" style="margin-top:8px;font-size:12px">Import their key card (via Contacts → Import key card) to verify this post.</div>`;
-      html += '</div>';
-      out.innerHTML = html;
-      return;
-    }
-
-    // Signature verification
-    const signedPayload = new TextEncoder().encode(`${hash8}:${identity}:${contentHash}:${timestamp}`);
-    try {
-      const pubKey = await cryptoOps.importPublicKeyB64(signerRec.public_key_b64);
-      const valid  = await cryptoOps.verify(pubKey, sig, signedPayload);
-      if (valid) {
-        html += `<div class="ok">✓ Signature valid — signed by <strong>${signerRec.name}</strong> <span class="mono" style="font-size:11px">${hash8}</span></div>`;
-      } else {
-        html += '<div class="fail">✗ Signature invalid — this post may have been tampered with.</div>';
-      }
-    } catch (e) {
-      html += `<div class="fail">✗ Verification error: ${e.message}</div>`;
-    }
-
-    html += '</div>';
-    out.innerHTML = html;
-  },
-
-  async retryWebAuthn() {
-    await db.del('settings', 'webauthn_unreliable').catch(() => {});
-    const banner = document.getElementById('webauthn-banner');
-    if (banner) banner.style.display = 'none';
-    ui.display('<span class="warn">Cleared — try your action again.</span>');
-  },
-
-  // ── PIN fallback (dev/testing) ─────────────────────────────────────────────
-
-  async checkPinFallbackStatus() {
-    const enabled = await keyring._pinFallbackEnabled();
-    const statusEl  = document.getElementById('pin-fallback-status');
-    const enableUI  = document.getElementById('pin-fallback-enable-ui');
-    const disableUI = document.getElementById('pin-fallback-disable-ui');
-    if (!statusEl) return;
-    if (enabled) {
-      statusEl.innerHTML = '<span class="ok">✓ PIN fallback enabled</span>';
-      if (enableUI)  enableUI.style.display  = 'none';
-      if (disableUI) disableUI.style.display = 'block';
-    } else {
-      statusEl.innerHTML = '<span class="muted">Disabled (secure mode active)</span>';
-      if (enableUI)  enableUI.style.display  = 'block';
-      if (disableUI) disableUI.style.display = 'none';
-    }
-  },
-
-  async enablePinFallback() {
-    const pin = document.getElementById('pin-setup-input')?.value || '';
-    if (!/^\d{4}$/.test(pin)) { ui.display('<span class="warn">PIN must be exactly 4 digits.</span>'); return; }
-    await keyring.enablePinFallback(pin);
-    document.getElementById('pin-setup-input').value = '';
-    await this.checkPinFallbackStatus();
-    ui.display('<span class="ok">✓ PIN fallback enabled. Create a new key to use it.</span>');
-  },
-
-  async disablePinFallback() {
-    await keyring.disablePinFallback();
-    await this.checkPinFallbackStatus();
-    ui.display('<span class="ok">✓ PIN fallback disabled — biometric model restored.</span>');
-  },
-
-  // Prompt for PIN using a floating overlay; resolves to the entered string or null.
-  _promptPin() {
-    return new Promise(resolve => {
-      const overlay = document.createElement('div');
-      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:500';
-      overlay.innerHTML = `
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:28px 24px;width:320px;max-width:90vw">
-          <h3 style="margin-bottom:14px;font-size:15px">Enter signing PIN</h3>
-          <input type="password" id="_pin-overlay-input" placeholder="0000" maxlength="4" inputmode="numeric" pattern="\d{4}" autocomplete="current-password"
-                 style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:var(--radius);font-size:14px;font-family:inherit;margin-bottom:14px">
-          <div style="display:flex;gap:10px">
-            <button id="_pin-overlay-ok" style="flex:1">Confirm</button>
-            <button id="_pin-overlay-cancel" class="btn-secondary" style="flex:1">Cancel</button>
-          </div>
-        </div>`;
-      document.body.appendChild(overlay);
-      const input = overlay.querySelector('#_pin-overlay-input');
-      input.focus();
-      const finish = val => { overlay.remove(); resolve(val); };
-      overlay.querySelector('#_pin-overlay-ok').addEventListener('click', () => finish(input.value));
-      overlay.querySelector('#_pin-overlay-cancel').addEventListener('click', () => finish(null));
-      input.addEventListener('keydown', e => { if (e.key === 'Enter') finish(input.value); if (e.key === 'Escape') finish(null); });
-    });
-  },
-
-  // Unlock keyring, showing a PIN overlay if needed. No-op if already unlocked.
-  async _unlock() {
-    if (keyring._sessionKey) return;
-    try {
-      await keyring.unlock();
-    } catch (e) {
-      if (!e.pinRequired) throw e;
-      const entered = await this._promptPin();
-      if (!entered) throw new Error('Cancelled.');
-      await keyring.unlock(entered);
-    }
-  },
 };
 
-app.init().catch(console.error);
+// ─── BOOT ─────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => app.init());
 </script>
 </body>
 </html>
