@@ -234,7 +234,7 @@
         <div class="step-num">1</div>
         <div class="step-body">
           <div class="step-title">Register passkey</div>
-          <div class="step-desc">Your passkey protects your private keys. Use Android Chrome with biometric unlock.</div>
+          <div class="step-desc">Your passkey protects your private keys. If your device doesn't support passkeys, you'll set a PIN instead.</div>
           <button class="btn-primary" id="wz-btn-1" onclick="app.registerPasskey()">Set up passkey</button>
         </div>
       </div>
@@ -430,7 +430,7 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
-const APP_VERSION = 'ssd-v63';
+const APP_VERSION = 'ssd-v64';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD-basic]', ...a);
@@ -608,24 +608,77 @@ const app = {
       this.msg('<span class="warn">Passkey already registered.</span>'); return;
     }
     this.msg('Registering passkey…');
+    let rung;
     try {
       const { prfSupported } = await passkey.register('SSD Keyring');
-      if (!prfSupported) {
-        await db.del('settings', 'credential_id');
-        this.msg('<span class="fail">This device does not support secure key storage. Use Android Chrome or iOS 18+ Safari.</span>');
-        return;
+      rung = prfSupported ? 1 : 2;
+    } catch (e) {
+      if (e.name === 'NotAllowedError') {
+        this.msg('<span class="fail">Passkey setup cancelled.</span>'); return;
       }
+      rung = 3;
+    }
+    await keyring.setRung(rung);
+    if (rung === 1) {
       this.msg('<span class="ok">✓ Passkey registered.</span>');
       await this.refreshHome();
-    } catch(e) {
-      this.msg(`<span class="fail">Registration failed: ${e.message}</span>`);
+      return;
+    }
+    const disclosure = rung === 2
+      ? 'Your device supports passkeys but not the strongest key protection. You\'ll set a PIN to protect your keys.'
+      : 'Your keys are protected by your PIN only. Anyone with access to this browser profile who knows your PIN can sign as you.';
+    this.msg(`<div>${disclosure}</div><div class="muted" style="margin-top:8px">Set a 4-digit PIN to continue.</div>`);
+    const pin = await this._promptForPin('Set a 4-digit PIN');
+    if (!pin) {
+      await db.del('settings', 'credential_id');
+      await db.del('settings', 'keyring_rung');
+      this.msg('<span class="warn">Setup cancelled.</span>'); return;
+    }
+    const salt = crypto.getRandomValues(new Uint8Array(32));
+    await db.put('settings', { key: 'pin_salt', value: cryptoOps.b64enc(salt) });
+    this.msg('<span class="ok">✓ Set up complete.</span>');
+    await this.refreshHome();
+  },
+
+  _promptForPin(title = 'Enter PIN') {
+    return new Promise(resolve => {
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:500';
+      overlay.innerHTML = `
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:28px 24px;width:300px;max-width:90vw">
+          <h3 style="margin-bottom:14px;font-size:15px">${title}</h3>
+          <input type="password" id="_pin-overlay-input" placeholder="0000" maxlength="4" inputmode="numeric" pattern="\\d{4}" autocomplete="current-password"
+                 style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:var(--radius);font-size:14px;font-family:inherit;margin-bottom:14px">
+          <div style="display:flex;gap:10px">
+            <button id="_pin-overlay-ok" style="flex:1">Confirm</button>
+            <button id="_pin-overlay-cancel" class="btn-secondary" style="flex:1">Cancel</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      const input = overlay.querySelector('#_pin-overlay-input');
+      input.focus();
+      const finish = val => { overlay.remove(); resolve(/^\d{4}$/.test(val) ? val : null); };
+      overlay.querySelector('#_pin-overlay-ok').addEventListener('click', () => finish(input.value));
+      overlay.querySelector('#_pin-overlay-cancel').addEventListener('click', () => finish(null));
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') finish(input.value); if (e.key === 'Escape') finish(null); });
+    });
+  },
+
+  async _unlock() {
+    try {
+      await keyring.ensureUnlocked();
+    } catch (e) {
+      if (!e.pinRequired) throw e;
+      const pin = await this._promptForPin('Enter your PIN');
+      if (!pin) throw new Error('Cancelled.');
+      await keyring.unlock(pin);
     }
   },
 
   async ensureIdentity() {
     this.msg('Authenticating…');
     try {
-      await keyring.ensureUnlocked();
+      await this._unlock();
       const allKeys = await db.getAll('my_keys');
       const dKey = allKeys.find(k => k.name.startsWith('D:') && !k.is_revoked);
       const oKey = allKeys.find(k => k.name.startsWith('O:') && !k.is_revoked);
@@ -681,7 +734,7 @@ const app = {
     if (!identity) { this.msg('<span class="warn">Enter your platform identity (e.g. fb:profile/username).</span>'); return; }
     this.msg('Signing…');
     try {
-      await keyring.ensureUnlocked();
+      await this._unlock();
       const rec = await db.get('my_keys', keyId);
       if (!rec) throw new Error('Key not found.');
       if (rec.identity !== identity) await db.put('my_keys', { ...rec, identity });
@@ -795,7 +848,7 @@ const app = {
     const { keyId, canonical, timestamp, render, rec } = this._sigCtx;
     this.msg('Signing…');
     try {
-      await keyring.ensureUnlocked();
+      await this._unlock();
       const enc    = new TextEncoder();
       const engine = renderEngines['ssd-render-1.0'];
       const content = { source: canonical, render };
@@ -887,7 +940,7 @@ const app = {
         const slot = envelope.recipients?.find(r => myEncKeys.some(k => k.pub === r.for_key));
         if (!slot) { content.textContent = '[Sealed for different recipients — cannot open here]'; return; }
         this.msg('Decrypting…');
-        await keyring.ensureUnlocked();
+        await this._unlock();
         const myPriv   = await keyring.getEncryptionPrivateKey(slot.for_key);
         const dekBytes = await cryptoOps.unwrapDEK(slot, myPriv);
         const dekKey   = await cryptoOps.importAESKey(dekBytes);

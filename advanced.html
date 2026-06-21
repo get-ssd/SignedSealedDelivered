@@ -380,21 +380,6 @@
         </div>
       </div>
     </div>
-    <div class="settings-block" id="pin-fallback-block">
-      <h3>PIN Fallback <span class="badge badge-danger">Dev only</span></h3>
-      <p style="color:var(--warning);font-size:12px;margin-bottom:10px">⚠ Replaces passkey hardware-bound encryption with a password. Keys created while enabled are NOT protected by your biometric. Disable to restore the secure model — you will need to create fresh keys.</p>
-      <div id="pin-fallback-status" style="font-size:13px;margin-bottom:10px">Checking…</div>
-      <div id="pin-fallback-enable-ui" style="display:none">
-        <div class="form-group">
-          <label>4-digit PIN</label>
-          <input type="password" id="pin-setup-input" placeholder="0000" maxlength="4" inputmode="numeric" pattern="\d{4}" autocomplete="new-password">
-        </div>
-        <button onclick="app.enablePinFallback()">Enable PIN fallback</button>
-      </div>
-      <div id="pin-fallback-disable-ui" style="display:none">
-        <button class="btn-danger" onclick="app.disablePinFallback()">Disable PIN fallback</button>
-      </div>
-    </div>
     <div class="settings-block">
       <h3>Factory Reset</h3>
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Wipes all data on this device: keys, contacts, documents, and settings. Use this to start completely fresh. Downloaded <code>.ssd</code> files are not affected.</p>
@@ -529,7 +514,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v63';
+const APP_VERSION = 'ssd-v64';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD]', ...a);
@@ -659,7 +644,7 @@ const ui = {
     if (id === 'socialVerify') { document.getElementById('social-verify-text').value = ''; document.getElementById('social-verify-result').innerHTML = ''; }
     if (id === 'seal')      app.loadSealRecipients();
     if (id === 'deliver')   app.loadDeliver();
-    if (id === 'settings')  { app.checkPasskeyStatus(); app.checkEncryptionKeyStatus(); app.loadDevicesSection(); app.checkPinFallbackStatus(); }
+    if (id === 'settings')  { app.checkPasskeyStatus(); app.checkEncryptionKeyStatus(); app.loadDevicesSection(); }
   },
   display(html) {
     const r = document.getElementById('results');
@@ -739,7 +724,7 @@ const test = {
     const keys = await db.getAll('my_keys');
     if (!keys.length) { ui.display('<span class="fail">No key — run Setup first</span>'); return; }
     try {
-      await keyring.ensureUnlocked();
+      await this._unlock();
       const card = await keyring.exportKeyCard(keys[0].id);
       await navigator.clipboard.writeText(JSON.stringify(card));
       ui.display('<div class="ok">✓ Key card copied to clipboard</div>');
@@ -1594,29 +1579,43 @@ const app = {
     const label = document.getElementById('passkey-label').value.trim() || 'SSD Keyring';
     ui.clear();
     ui.display('Registering passkey…');
+    let rung;
     try {
       const { prfSupported } = await passkey.register(label);
-      ui.clear();
-      if (!prfSupported) {
-        await db.del('settings', 'credential_id');
-        await db.del('settings', 'prf_supported');
-        ui.display('<div class="fail">Passkey not registered — it doesn\'t support secure key storage. Use a phone (Chrome on Android or Safari on iOS 18+) or a FIDO2 hardware key.</div>');
-      } else {
-        ui.display('<div class="ok">✓ Passkey registered. Creating device key…</div>');
-        try {
-          const deviceRec = await keyring.createKey('D:Device Key');
-          ui.display(`<div class="ok">✓ Passkey registered. Device key created automatically (${deviceRec.hash8}).</div>`);
-        } catch (ke) {
-          ui.display('<div class="ok">✓ Passkey registered.</div><div class="warn">Device key creation failed — create one manually in Keys.</div>');
-          console.error('Auto device key failed:', ke);
-        }
-      }
-      await this.checkPasskeyStatus();
+      rung = prfSupported ? 1 : 2;
     } catch (e) {
-      ui.clear();
-      ui.display(`<span class="fail">Registration failed: ${e.message}</span>`);
-      console.error(e);
+      if (e.name === 'NotAllowedError') {
+        ui.display('<span class="fail">Passkey setup cancelled.</span>'); return;
+      }
+      rung = 3;
     }
+    await keyring.setRung(rung);
+    if (rung === 1) {
+      ui.display('<div class="ok">✓ Passkey registered. Creating device key…</div>');
+      try {
+        const deviceRec = await keyring.createKey('D:Device Key');
+        ui.display(`<div class="ok">✓ Passkey registered. Device key created automatically (${deviceRec.hash8}).</div>`);
+      } catch (ke) {
+        ui.display('<div class="ok">✓ Passkey registered.</div><div class="warn">Device key creation failed — create one manually in Keys.</div>');
+        console.error('Auto device key failed:', ke);
+      }
+    } else {
+      const disclosure = rung === 2
+        ? 'Your device supports passkeys but not the strongest key protection. You\'ll set a PIN to protect your keys.'
+        : 'Your keys are protected by your PIN only. Anyone with access to this browser profile who knows your PIN can sign as you.';
+      ui.display(`<div>${disclosure}</div><div class="muted" style="margin-top:8px">Set a 4-digit PIN to continue.</div>`);
+      const pin = await this._promptPin('Set a 4-digit PIN');
+      if (!pin) {
+        await db.del('settings', 'credential_id');
+        await db.del('settings', 'keyring_rung');
+        ui.display('<span class="warn">Setup cancelled.</span>');
+        await this.checkPasskeyStatus(); return;
+      }
+      const salt = crypto.getRandomValues(new Uint8Array(32));
+      await db.put('settings', { key: 'pin_salt', value: cryptoOps.b64enc(salt) });
+      ui.display('<div class="ok">✓ Set up complete.</div>');
+    }
+    await this.checkPasskeyStatus();
   },
 
   async clearPasskey() {
@@ -2825,49 +2824,15 @@ const app = {
     ui.display('<span class="warn">Cleared — try your action again.</span>');
   },
 
-  // ── PIN fallback (dev/testing) ─────────────────────────────────────────────
-
-  async checkPinFallbackStatus() {
-    const enabled = await keyring._pinFallbackEnabled();
-    const statusEl  = document.getElementById('pin-fallback-status');
-    const enableUI  = document.getElementById('pin-fallback-enable-ui');
-    const disableUI = document.getElementById('pin-fallback-disable-ui');
-    if (!statusEl) return;
-    if (enabled) {
-      statusEl.innerHTML = '<span class="ok">✓ PIN fallback enabled</span>';
-      if (enableUI)  enableUI.style.display  = 'none';
-      if (disableUI) disableUI.style.display = 'block';
-    } else {
-      statusEl.innerHTML = '<span class="muted">Disabled (secure mode active)</span>';
-      if (enableUI)  enableUI.style.display  = 'block';
-      if (disableUI) disableUI.style.display = 'none';
-    }
-  },
-
-  async enablePinFallback() {
-    const pin = document.getElementById('pin-setup-input')?.value || '';
-    if (!/^\d{4}$/.test(pin)) { ui.display('<span class="warn">PIN must be exactly 4 digits.</span>'); return; }
-    await keyring.enablePinFallback(pin);
-    document.getElementById('pin-setup-input').value = '';
-    await this.checkPinFallbackStatus();
-    ui.display('<span class="ok">✓ PIN fallback enabled. Create a new key to use it.</span>');
-  },
-
-  async disablePinFallback() {
-    await keyring.disablePinFallback();
-    await this.checkPinFallbackStatus();
-    ui.display('<span class="ok">✓ PIN fallback disabled — biometric model restored.</span>');
-  },
-
   // Prompt for PIN using a floating overlay; resolves to the entered string or null.
-  _promptPin() {
+  _promptPin(title = 'Enter PIN') {
     return new Promise(resolve => {
       const overlay = document.createElement('div');
       overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:500';
       overlay.innerHTML = `
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:28px 24px;width:320px;max-width:90vw">
-          <h3 style="margin-bottom:14px;font-size:15px">Enter signing PIN</h3>
-          <input type="password" id="_pin-overlay-input" placeholder="0000" maxlength="4" inputmode="numeric" pattern="\d{4}" autocomplete="current-password"
+          <h3 style="margin-bottom:14px;font-size:15px">${title}</h3>
+          <input type="password" id="_pin-overlay-input" placeholder="0000" maxlength="4" inputmode="numeric" pattern="\\d{4}" autocomplete="current-password"
                  style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:var(--radius);font-size:14px;font-family:inherit;margin-bottom:14px">
           <div style="display:flex;gap:10px">
             <button id="_pin-overlay-ok" style="flex:1">Confirm</button>
@@ -2877,7 +2842,7 @@ const app = {
       document.body.appendChild(overlay);
       const input = overlay.querySelector('#_pin-overlay-input');
       input.focus();
-      const finish = val => { overlay.remove(); resolve(val); };
+      const finish = val => { overlay.remove(); resolve(/^\d{4}$/.test(val) ? val : null); };
       overlay.querySelector('#_pin-overlay-ok').addEventListener('click', () => finish(input.value));
       overlay.querySelector('#_pin-overlay-cancel').addEventListener('click', () => finish(null));
       input.addEventListener('keydown', e => { if (e.key === 'Enter') finish(input.value); if (e.key === 'Escape') finish(null); });
@@ -2891,7 +2856,7 @@ const app = {
       await keyring.unlock();
     } catch (e) {
       if (!e.pinRequired) throw e;
-      const entered = await this._promptPin();
+      const entered = await this._promptPin('Enter your PIN');
       if (!entered) throw new Error('Cancelled.');
       await keyring.unlock(entered);
     }
