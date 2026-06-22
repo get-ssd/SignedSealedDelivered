@@ -430,7 +430,7 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
-const APP_VERSION = 'ssd-v65';
+const APP_VERSION = 'ssd-v66';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD-basic]', ...a);
@@ -614,7 +614,7 @@ const app = {
       const { prfSupported } = await passkey.register('SSD Keyring');
       rung = prfSupported ? 1 : 2;
     } catch (e) {
-      if (e.name === 'NotAllowedError') {
+      if (e.name === 'NotAllowedError' || e.name === 'AbortError') {
         this.msg('<span class="fail">Passkey setup cancelled.</span>'); return;
       }
       rung = 3;
@@ -746,7 +746,7 @@ const app = {
       const contentHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,'0')).join('');
       const signedBytes = new TextEncoder().encode(`${rec.hash8}:${identity}:${contentHash}:${timestamp}`);
       const privateKey  = await keyring.getPrivateKey(keyId);
-      const sig         = await cryptoOps.sign(privateKey, signedBytes);
+      const sig         = await passkey.confirmAndSign(privateKey, signedBytes);
       const content8    = contentHash.slice(0, 8);
       const token       = `[SSD:${rec.hash8}:${identity}:${content8}:${sig}:${timestamp}]`;
       const fullPost    = canonical.trimEnd() + '\n\n' + token;
@@ -862,7 +862,7 @@ const app = {
       };
       const manifestBytes = enc.encode(JSON.stringify(manifestObj, null, 2));
       const privateKey    = await keyring.getPrivateKey(keyId);
-      const signature     = await cryptoOps.sign(privateKey, manifestBytes);
+      const signature     = await passkey.confirmAndSign(privateKey, manifestBytes);
       const manifestHash  = 'sha256:' + await cryptoOps.sha256(manifestBytes);
       const signatureObj  = {
         algorithm: 'Ed25519', signer_hash8: rec.hash8, capacity: ['ssd:author'],

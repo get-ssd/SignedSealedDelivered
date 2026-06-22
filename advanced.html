@@ -514,7 +514,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v64';
+const APP_VERSION = 'ssd-v66';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD]', ...a);
@@ -1584,7 +1584,7 @@ const app = {
       const { prfSupported } = await passkey.register(label);
       rung = prfSupported ? 1 : 2;
     } catch (e) {
-      if (e.name === 'NotAllowedError') {
+      if (e.name === 'NotAllowedError' || e.name === 'AbortError') {
         ui.display('<span class="fail">Passkey setup cancelled.</span>'); return;
       }
       rung = 3;

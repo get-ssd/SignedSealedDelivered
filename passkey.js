@@ -25,7 +25,7 @@ const passkey = {
       }, ms);
       credFn(ctrl.signal).then(
         result => { clearTimeout(timer); resolve(result); },
-        err    => { clearTimeout(timer); if (err.name !== 'AbortError') reject(err); }
+        err    => { clearTimeout(timer); if (err.name === 'AbortError' && ctrl.signal.aborted) return; reject(err); }
       );
     });
   },
@@ -46,6 +46,7 @@ const passkey = {
           { alg: -8,   type: 'public-key' },  // Ed25519 — newer platforms
         ],
         authenticatorSelection: {
+          authenticatorAttachment: 'platform',
           userVerification: 'required',
           residentKey: 'required',
         },
@@ -64,9 +65,13 @@ const passkey = {
   },
 
   async authenticate() {
-    const credSetting = await db.get('settings', 'credential_id');
+    const [credSetting, prfSetting] = await Promise.all([
+      db.get('settings', 'credential_id'),
+      db.get('settings', 'prf_supported'),
+    ]);
     if (!credSetting) throw new Error('No passkey registered. Go to Settings first.');
 
+    const requestPrf = prfSetting?.value === true;
     const credentialId = cryptoOps.b64dec(credSetting.value);
     const challenge = window.crypto.getRandomValues(new Uint8Array(32));
     const rpId = window.location.hostname || 'localhost';
@@ -77,7 +82,7 @@ const passkey = {
         rpId,
         allowCredentials: [{ type: 'public-key', id: credentialId }],
         userVerification: 'required',
-        extensions: { prf: { eval: { first: this.PRF_SALT } } },
+        ...(requestPrf && { extensions: { prf: { eval: { first: this.PRF_SALT } } } }),
       },
       signal,
     }));
@@ -104,7 +109,10 @@ const passkey = {
 
   async confirmAndSign(privateKey, dataBytes) {
     const credSetting = await db.get('settings', 'credential_id');
-    if (!credSetting) throw new Error('No passkey registered.');
+    if (!credSetting) {
+      // Rung 3 — PIN only, no passkey available for per-sign confirmation
+      return cryptoOps.sign(privateKey, dataBytes);
+    }
 
     const credentialId = cryptoOps.b64dec(credSetting.value);
     const challenge = window.crypto.getRandomValues(new Uint8Array(32));
