@@ -430,7 +430,7 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
-const APP_VERSION = 'ssd-v64';
+const APP_VERSION = 'ssd-v65';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD-basic]', ...a);
@@ -557,25 +557,26 @@ const app = {
   // ── HOME ──────────────────────────────────────────────────────────────────
 
   async refreshHome() {
-    const hasCred = !!(await db.get('settings', 'credential_id'));
+    const rungRec = await db.get('settings', 'keyring_rung');
+    const hasKeyring = !!(rungRec?.value);
     const allKeys = await db.getAll('my_keys');
     const dKey = allKeys.find(k => k.name.startsWith('D:') && !k.is_revoked);
     const oKey = allKeys.find(k => k.name.startsWith('O:') && !k.is_revoked);
-    const done = hasCred && dKey && oKey;
+    const done = hasKeyring && dKey && oKey;
 
     document.getElementById('home-wizard').style.display = done ? 'none' : '';
     document.getElementById('home-status').style.display = done ? '' : 'none';
 
     if (!done) {
-      this._updateWizardSteps(hasCred, dKey, oKey);
+      this._updateWizardSteps(hasKeyring, dKey, oKey);
     } else {
-      await this._renderHomeStatus(oKey);
+      await this._renderHomeStatus(oKey, rungRec.value);
     }
   },
 
-  _updateWizardSteps(hasCred, dKey, oKey) {
-    const step1done = hasCred;
-    const step2done = hasCred && dKey && oKey;
+  _updateWizardSteps(hasKeyring, dKey, oKey) {
+    const step1done = hasKeyring;
+    const step2done = hasKeyring && dKey && oKey;
 
     const setClass = (id, done, current) =>
       document.getElementById(id).className = `step ${done ? 'done' : current ? 'current' : 'pending'}`;
@@ -589,14 +590,14 @@ const app = {
     document.getElementById('wz-btn-3').disabled = !step2done;
   },
 
-  async _renderHomeStatus(oKey) {
+  async _renderHomeStatus(oKey, rung = 1) {
     const seed = await cryptoOps.identiconSeed(oKey.public_key_b64);
     identicon.render(seed, document.getElementById('home-identicon'), 64);
     document.getElementById('home-okey-name').textContent = oKey.name.startsWith('O:') ? oKey.name.slice(2) : oKey.name;
     document.getElementById('home-hash8').textContent = oKey.hash8;
-    const hasCred = !!(await db.get('settings', 'credential_id'));
-    document.getElementById('home-passkey-status').textContent = hasCred ? '✓ Registered' : '✗ Not registered';
-    document.getElementById('home-passkey-status').className = hasCred ? 'ok' : 'fail';
+    const statusText = rung === 1 ? '✓ Passkey (PRF)' : rung === 2 ? '✓ Passkey + PIN' : '✓ PIN only';
+    document.getElementById('home-passkey-status').textContent = statusText;
+    document.getElementById('home-passkey-status').className = 'ok';
     const allKeys = await db.getAll('my_keys');
     const dKey = allKeys.find(k => k.name.startsWith('D:') && !k.is_revoked);
     document.getElementById('home-dkey-status').textContent = dKey ? (dKey.name.startsWith('D:') ? dKey.name.slice(2) : dKey.name) : '✗ Missing';
@@ -604,8 +605,8 @@ const app = {
   },
 
   async registerPasskey() {
-    if (await db.get('settings', 'credential_id')) {
-      this.msg('<span class="warn">Passkey already registered.</span>'); return;
+    if (await db.get('settings', 'keyring_rung')) {
+      this.msg('<span class="warn">Keyring already configured.</span>'); return;
     }
     this.msg('Registering passkey…');
     let rung;
