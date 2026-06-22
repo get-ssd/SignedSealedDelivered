@@ -260,6 +260,9 @@
     </div>
   </div>
 
+  <!-- Version -->
+  <div id="app-version" class="muted" style="margin-top:24px;text-align:center;font-size:12px"></div>
+
   <!-- Status (hidden when wizard not done) -->
   <div id="home-status" style="display:none">
     <div class="identity-card">
@@ -532,6 +535,7 @@ const app = {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' }).catch(console.warn);
     }
+    document.getElementById('app-version').textContent = APP_VERSION;
     await this.refreshHome();
   },
 
@@ -676,6 +680,18 @@ const app = {
     }
   },
 
+  async _confirmSign(privateKey, dataBytes) {
+    const rungRec = await db.get('settings', 'keyring_rung');
+    const rung = rungRec ? rungRec.value : 1;
+    if (rung === 1) return passkey.confirmAndSign(privateKey, dataBytes);
+    // Rungs 2 and 3: PIN per signing
+    const pin = await this._promptForPin('Enter PIN to sign');
+    if (!pin) throw new Error('Cancelled.');
+    const ok = await keyring.verifyPin(pin);
+    if (!ok) throw new Error('Incorrect PIN.');
+    return cryptoOps.sign(privateKey, dataBytes);
+  },
+
   async ensureIdentity() {
     this.msg('Authenticating…');
     try {
@@ -746,7 +762,7 @@ const app = {
       const contentHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2,'0')).join('');
       const signedBytes = new TextEncoder().encode(`${rec.hash8}:${identity}:${contentHash}:${timestamp}`);
       const privateKey  = await keyring.getPrivateKey(keyId);
-      const sig         = await passkey.confirmAndSign(privateKey, signedBytes);
+      const sig         = await this._confirmSign(privateKey, signedBytes);
       const content8    = contentHash.slice(0, 8);
       const token       = `[SSD:${rec.hash8}:${identity}:${content8}:${sig}:${timestamp}]`;
       const fullPost    = canonical.trimEnd() + '\n\n' + token;
@@ -862,7 +878,7 @@ const app = {
       };
       const manifestBytes = enc.encode(JSON.stringify(manifestObj, null, 2));
       const privateKey    = await keyring.getPrivateKey(keyId);
-      const signature     = await passkey.confirmAndSign(privateKey, manifestBytes);
+      const signature     = await this._confirmSign(privateKey, manifestBytes);
       const manifestHash  = 'sha256:' + await cryptoOps.sha256(manifestBytes);
       const signatureObj  = {
         algorithm: 'Ed25519', signer_hash8: rec.hash8, capacity: ['ssd:author'],

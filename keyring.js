@@ -4,6 +4,7 @@
 const keyring = {
   _sessionKey: null,
   _rung2GatePassed: false,
+  _pinCanary: null,
 
   async _getRung() {
     const rec = await db.get('settings', 'keyring_rung');
@@ -25,6 +26,9 @@ const keyring = {
         const err = new Error('PIN required'); err.pinRequired = true; throw err;
       }
       this._sessionKey = await this._pinToAesKey(pin);
+      this._pinCanary = await cryptoOps.encryptBytes(
+        new TextEncoder().encode('ssd-pin-canary-v1'), this._sessionKey
+      );
       return this._sessionKey;
     }
 
@@ -38,6 +42,9 @@ const keyring = {
       }
       this._rung2GatePassed = false;
       this._sessionKey = await this._pinToAesKey(pin);
+      this._pinCanary = await cryptoOps.encryptBytes(
+        new TextEncoder().encode('ssd-pin-canary-v1'), this._sessionKey
+      );
       return this._sessionKey;
     }
 
@@ -53,6 +60,17 @@ const keyring = {
   async ensureUnlocked(pin = null) {
     if (!this._sessionKey) await this.unlock(pin);
     return this._sessionKey;
+  },
+
+  async verifyPin(pin) {
+    if (!this._pinCanary) throw new Error('No PIN canary — unlock the keyring first.');
+    const testKey = await this._pinToAesKey(pin);
+    try {
+      const plain = await cryptoOps.decryptBytes(this._pinCanary.iv_b64, this._pinCanary.ct_b64, testKey);
+      return new TextDecoder().decode(plain) === 'ssd-pin-canary-v1';
+    } catch {
+      return false;
+    }
   },
 
   async _pinToAesKey(pin) {
