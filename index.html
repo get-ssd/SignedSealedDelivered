@@ -1052,6 +1052,7 @@ const app = {
               ${k.is_default ? '<span class="badge badge-primary">Default</span>' : ''}
             </div>
             <div class="key-item-hash">${k.hash8}</div>
+            ${k.is_revoked ? '' : `<button class="btn-secondary" onclick="app.showKeyCardQR('${k.id}')">Show QR</button>`}
           </div>`).join('')
       : '<p class="muted">No keys.</p>';
 
@@ -1163,16 +1164,30 @@ const app = {
     const rec = await db.get('my_keys', keyId);
     if (!rec) return;
     const beacon = `[SSDKEY:${rec.hash8}:${rec.public_key_b64}]`;
+    await this._renderQRModal('Your SSDKEY beacon', `Share this QR so contacts can import your key. Fingerprint: ${rec.hash8}`, beacon);
+  },
+
+  async showKeyCardQR(keyId) {
+    try {
+      await this._unlock();
+      const card = await keyring.exportKeyCard(keyId);
+      await this._renderQRModal('Key card QR', `Key card for ${this._esc(card.name)} (${card.hash8})`, JSON.stringify(card));
+    } catch(e) {
+      this.msg(`<span class="fail">Could not generate QR: ${e.message}</span>`);
+    }
+  },
+
+  async _renderQRModal(title, desc, payload) {
     if (typeof qrcode === 'undefined') {
       this.msg('<span class="fail">QR library not loaded — check connection and reload.</span>'); return;
     }
-    document.getElementById('qr-modal-title').textContent = 'Your SSDKEY beacon';
-    document.getElementById('qr-modal-desc').textContent = `Share this QR so contacts can import your key. Fingerprint: ${rec.hash8}`;
+    document.getElementById('qr-modal-title').textContent = title;
+    document.getElementById('qr-modal-desc').textContent = desc;
     const canvas = document.getElementById('qr-canvas');
     canvas.innerHTML = '';
     try {
       const qr = qrcode(0, 'M');
-      qr.addData(beacon, 'Byte');
+      qr.addData(payload, 'Byte');
       qr.make();
       const modules = qr.getModuleCount();
       const margin  = 4;
