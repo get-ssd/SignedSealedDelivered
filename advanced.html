@@ -2136,9 +2136,9 @@ const app = {
       const deviceNameSetting = await db.get('settings', 'my_device_name');
       const deviceName = deviceNameSetting ? deviceNameSetting.value : null;
 
-      const qrPayload = JSON.stringify({ ssd: 'qr1', n: card.name, k: card.public_key, ...(card.encryption_key ? { ek: card.encryption_key } : {}), ...(deviceName ? { dn: deviceName } : {}) });
+      const qrPayload = `[SSDKEY:${card.hash8}:${card.public_key}]`;
       log('QR payload bytes:', qrPayload.length);
-      await this._showQRModal('Your key card', `Share this so contacts can verify your identity. Fingerprint: ${card.hash8}`, qrPayload, null);
+      await this._showQRModal('Your SSDKEY beacon', `Share this so contacts can import your key. Fingerprint: ${card.hash8}`, qrPayload, null);
     } catch(e) {
       ui.display(`<span class="fail">Could not generate QR: ${e.message}</span>`);
       console.error(e);
@@ -2148,7 +2148,7 @@ const app = {
   async showContactKeyQR(contactId) {
     const rec = await db.get('contact_keys', contactId);
     if (!rec) return;
-    const payload = JSON.stringify({ hash8: rec.hash8, name: rec.name, public_key: rec.public_key_b64, encryption_key: rec.encryption_key_b64 || null });
+    const payload = `[SSDKEY:${rec.hash8}:${rec.public_key_b64}]`;
     await this._showQRModal(
       `Verify: ${rec.name}`,
       `Show this to ${rec.name} and ask if it matches their key. If they say no, tap "That's not my key".`,
@@ -2453,18 +2453,16 @@ const app = {
       cb(data);
       return;
     }
-    let card;
-    try { card = JSON.parse(data); } catch {
+    const m = data.match(/[\[(]SSDKEY:([A-Za-z0-9_-]{8}):([A-Za-z0-9+/=_-]+)[\])]/);
+    if (!m) {
       ui.showSection('contacts');
-      ui.display('<span class="fail">QR code is not a valid key card.</span>');
+      ui.display('<span class="fail">QR code does not contain an SSDKEY beacon.</span>');
       return;
     }
-    // Compact QR format: {ssd:'qr1', n:key_name, k:public_key, ek?:encryption_key, dn?:device_name}
-    if (card.ssd === 'qr1') {
-      card = { name: card.n, public_key: card.k, ...(card.ek ? { encryption_key: card.ek } : {}), ...(card.dn ? { deviceName: card.dn } : {}) };
-    }
+    const name = prompt(`Name for this key (${m[1]})?`, m[1]);
+    if (!name) return;
     ui.showSection('contacts');
-    await this.importContactCard(card, 'qr_scan');
+    await this.importContactCard({ hash8: m[1], public_key: m[2], name }, 'qr_scan');
   },
 
   async validateKey(keyId) {
@@ -2481,15 +2479,10 @@ const app = {
     await this.startQRScan(data => {
       ui.showSection('keyring');
       if (!resultEl) return;
-      let scanned;
-      try { scanned = JSON.parse(data); } catch {
-        resultEl.innerHTML = '<span class="fail">Not a valid key card QR.</span>';
-        resultEl.style.display = 'block';
-        return;
-      }
-      const scannedKey = scanned.ssd === 'qr1' ? scanned.k : scanned.public_key;
+      const m = data.match(/[\[(]SSDKEY:[A-Za-z0-9_-]{8}:([A-Za-z0-9+/=_-]+)[\])]/);
+      const scannedKey = m ? m[1] : null;
       if (!scannedKey) {
-        resultEl.innerHTML = '<span class="fail">QR does not contain a public key.</span>';
+        resultEl.innerHTML = '<span class="fail">QR does not contain an SSDKEY beacon.</span>';
         resultEl.style.display = 'block';
         return;
       }
