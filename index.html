@@ -1168,13 +1168,7 @@ const app = {
   },
 
   async showKeyCardQR(keyId) {
-    try {
-      await this._unlock();
-      const card = await keyring.exportKeyCard(keyId);
-      await this._renderQRModal('Key card QR', `Key card for ${this._esc(card.name)} (${card.hash8})`, JSON.stringify(card));
-    } catch(e) {
-      this.msg(`<span class="fail">Could not generate QR: ${e.message}</span>`);
-    }
+    await this.showBeaconQR(keyId);
   },
 
   async _renderQRModal(title, desc, payload) {
