@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSDKEY Beacon Grabber — PoC</title>
+<style>
+  :root{
+    --ink:#0e1116; --surface:#171c24; --surface-2:#1d242e;
+    --line:#262d38; --line-soft:#1f2630;
+    --text:#dce3ec; --muted:#8a97a8; --faint:#5b6675;
+    --accent:#5b9dff; --accent-press:#4a86e0;
+    --pass:#34d399; --pass-dim:#123127;
+    --fail:#f87171; --fail-dim:#33191b;
+    --hash:#ffd479;
+    --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--ink); color:var(--text); font-family:var(--sans);
+    line-height:1.5; -webkit-font-smoothing:antialiased;
+    padding:clamp(16px,4vw,40px);
+  }
+  main{max-width:760px; margin:0 auto}
+  header{margin-bottom:22px}
+  h1{font-size:clamp(20px,3.4vw,26px); margin:0 0 6px; font-weight:650; letter-spacing:-.01em}
+  h1 .key{color:var(--accent)}
+  .sub{margin:0; color:var(--muted); font-size:14px}
+  .sub code{font-family:var(--mono); color:var(--text); background:var(--surface-2);
+    padding:1px 5px; border-radius:4px; font-size:.88em}
+
+  .drop{
+    margin:22px 0 0; border:1px dashed var(--line); border-radius:12px;
+    background:var(--surface); padding:26px 20px;
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    transition:border-color .12s, background .12s;
+  }
+  .drop.over{border-color:var(--accent); background:var(--surface-2)}
+  button{
+    font:inherit; font-weight:550; cursor:pointer; border-radius:8px;
+    border:1px solid transparent; padding:10px 16px; color:#0a0d12;
+    background:var(--accent); transition:background .12s, transform .04s;
+  }
+  button:hover{background:var(--accent-press)}
+  button:active{transform:translateY(1px)}
+  button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  button[disabled]{opacity:.45; cursor:not-allowed}
+  .hint{color:var(--faint); font-size:13px}
+
+  #preview{margin-top:16px; max-width:100%; max-height:260px; border-radius:10px;
+    border:1px solid var(--line); display:block}
+
+  .status{margin-top:18px; font-family:var(--mono); font-size:13px; color:var(--muted)}
+  .bar{height:4px; border-radius:99px; background:var(--line-soft); overflow:hidden; margin-top:8px}
+  .bar > i{display:block; height:100%; width:0; background:var(--accent); transition:width .3s}
+
+  section.results{margin-top:26px}
+  .row{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px}
+  .row h2{font-size:15px; margin:0; font-weight:600}
+  .row h2 .count{color:var(--faint); font-weight:500; margin-left:6px; font-family:var(--mono)}
+  ul.list{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px}
+
+  .beacon{display:flex; align-items:stretch; border:1px solid var(--line);
+    border-radius:10px; overflow:hidden; background:var(--surface)}
+  .beacon .rail{width:4px; flex:0 0 4px}
+  .beacon.ok .rail{background:var(--pass)}
+  .beacon.bad .rail{background:var(--fail)}
+  .beacon .body{padding:11px 14px; flex:1 1 auto; min-width:0}
+  .beacon .tok{font-family:var(--mono); font-size:13px; word-break:break-all; color:var(--text)}
+  .beacon .tok .h{color:var(--hash)}
+  .beacon .meta{display:flex; align-items:center; gap:10px; margin-top:7px}
+  .chip{font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:.04em;
+    padding:2px 8px; border-radius:99px}
+  .chip.ok{color:var(--pass); background:var(--pass-dim)}
+  .chip.bad{color:var(--fail); background:var(--fail-dim)}
+  .note{font-size:12px; color:var(--muted)}
+  .empty{border:1px solid var(--line); border-radius:10px; background:var(--surface);
+    padding:18px; color:var(--muted); font-size:14px}
+
+  textarea{
+    width:100%; margin-top:14px; min-height:74px; resize:vertical;
+    font-family:var(--mono); font-size:13px; color:var(--text);
+    background:var(--ink); border:1px solid var(--line); border-radius:10px;
+    padding:11px 13px; line-height:1.55;
+  }
+  textarea:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  details{margin-top:18px}
+  summary{cursor:pointer; color:var(--muted); font-size:13px; font-family:var(--mono)}
+  summary:hover{color:var(--text)}
+  pre{margin:10px 0 0; padding:13px; background:var(--surface); border:1px solid var(--line);
+    border-radius:10px; font-family:var(--mono); font-size:12.5px; color:var(--muted);
+    white-space:pre-wrap; word-break:break-word; max-height:300px; overflow:auto}
+
+  #toast{
+    position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(12px);
+    background:var(--surface-2); border:1px solid var(--line); color:var(--text);
+    font-size:13px; padding:9px 15px; border-radius:99px; opacity:0; pointer-events:none;
+    transition:opacity .18s, transform .18s;
+  }
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1><span class="key">SSDKEY</span> Beacon Grabber</h1>
+    <p class="sub">Load an image, read its <code>[SSDKEY:…]</code> beacons, copy them.</p>
+  </header>
+
+  <div class="drop" id="drop">
+    <input type="file" id="file" accept="image/*" hidden>
+    <button id="pick">Choose image</button>
+    <span class="hint">or drag · or paste (Ctrl/Cmd-V)</span>
+  </div>
+
+  <img id="preview" alt="Loaded image" hidden>
+
+  <div class="status" id="status" hidden>
+    <span id="statusText">Idle</span>
+    <div class="bar"><i id="barFill"></i></div>
+  </div>
+
+  <section class="results" id="results" hidden>
+    <div class="row">
+      <h2>Beacons<span class="count" id="count"></span></h2>
+      <button id="copy" disabled>Copy valid beacons</button>
+    </div>
+    <ul class="list" id="list"></ul>
+    <textarea id="clip" readonly spellcheck="false" placeholder="Valid beacons land here, one per line."></textarea>
+  </section>
+
+  <details id="rawWrap" hidden>
+    <summary>Raw OCR passes</summary>
+    <pre id="raw"></pre>
+  </details>
+</main>
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script>
+(function(){
+"use strict";
+const $=id=>document.getElementById(id);
+const drop=$('drop'),file=$('file'),pick=$('pick'),preview=$('preview');
+const statusBox=$('status'),statusText=$('statusText'),barFill=$('barFill');
+const results=$('results'),list=$('list'),count=$('count'),copyBtn=$('copy'),clip=$('clip');
+const rawWrap=$('rawWrap'),raw=$('raw'),toast=$('toast');
+
+// ---- OCR -------------------------------------------------------------------
+// Two workers: one full-language for locating the beacon region,
+// one whitelist-constrained for reading base64url characters accurately.
+const WHITELIST = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-:[]()SSDKEY';
+
+let workerLang = null, workerWL = null;
+async function getLangWorker(){
+  if(!workerLang) workerLang = await Tesseract.createWorker('eng',1,{logger:p=>onProgress(p,'pass 1')});
+  return workerLang;
+}
+async function getWLWorker(){
+  if(!workerWL){
+    workerWL = await Tesseract.createWorker('eng',1,{logger:p=>onProgress(p,'pass 2')});
+    await workerWL.setParameters({'tessedit_char_whitelist': WHITELIST});
+  }
+  return workerWL;
+}
+function onProgress(m, tag){
+  if(typeof m.progress==='number' && m.status){
+    const pct=Math.round(m.progress*100);
+    statusText.textContent = tag+': '+m.status+' — '+pct+'%';
+    barFill.style.width = (tag==='pass 2' ? 50+pct/2 : pct/2)+'%';
+  }
+}
+
+// ---- Image preprocessing ---------------------------------------------------
+// Crop to the region that contains "SSDKEY" found in pass-1 bounding boxes,
+// then upscale and threshold for pass 2.
+function bboxesToRegion(words, imgW, imgH){
+  // collect words that mention SSDKEY or look like they might be part of the beacon
+  const beaconWords = words.filter(w=>
+    /SSDKEY|SSD|KEY|\[|\]/.test(w.text) ||
+    /^[A-Za-z0-9_\-]{6,}$/.test(w.text)   // longish base64-ish token
+  );
+  if(!beaconWords.length) return null;
+  let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+  for(const w of beaconWords){
+    const b=w.bbox;
+    x0=Math.min(x0,b.x0); y0=Math.min(y0,b.y0);
+    x1=Math.max(x1,b.x1); y1=Math.max(y1,b.y1);
+  }
+  // pad generously so we don't clip descenders / ascenders
+  const pad=Math.round((y1-y0)*0.5);
+  return {
+    x: Math.max(0, x0-pad),
+    y: Math.max(0, y0-pad),
+    w: Math.min(imgW, x1-x0+pad*2),
+    h: Math.min(imgH, y1-y0+pad*2)
+  };
+}
+
+function prepareCanvas(imgEl, region, scale=3){
+  const sw = region ? region.w : imgEl.naturalWidth;
+  const sh = region ? region.h : imgEl.naturalHeight;
+  const sx = region ? region.x : 0;
+  const sy = region ? region.y : 0;
+  const c = document.createElement('canvas');
+  c.width  = sw * scale;
+  c.height = sh * scale;
+  const ctx = c.getContext('2d');
+  // upscale
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(imgEl, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  // threshold: make it high-contrast B&W
+  const id = ctx.getImageData(0,0,c.width,c.height);
+  const d = id.data;
+  for(let i=0;i<d.length;i+=4){
+    const lum = 0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+    const v = lum > 128 ? 255 : 0;
+    d[i]=d[i+1]=d[i+2]=v;
+  }
+  ctx.putImageData(id,0,0);
+  return c;
+}
+
+function canvasToBlob(c){
+  return new Promise(res=>c.toBlob(res,'image/png'));
+}
+
+// ---- Beacon extraction -----------------------------------------------------
+const RE = /[\[\(]?\s*SSDKEY\s*[:：]\s*([0-9A-Fa-f]{8})\s*[:：]\s*([A-Za-z0-9_\-]{43})\s*[\]\)]?/g;
+
+function b64urlToBytes(s){
+  s=s.replace(/-/g,'+').replace(/_/g,'/');
+  while(s.length%4) s+='=';
+  const bin=atob(s), out=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i);
+  return out;
+}
+async function sha256hex(bytes){
+  const buf=await crypto.subtle.digest('SHA-256',bytes);
+  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function selfCheck(pubkey,hash8){
+  try{
+    const bytes=b64urlToBytes(pubkey);
+    if(bytes.length!==32) return false;
+    const hex=await sha256hex(bytes);
+    return hex.slice(0,8).toUpperCase()===hash8.toUpperCase();
+  }catch(_){return false;}
+}
+
+async function extract(texts){
+  const seen=new Set(), out=[];
+  for(const text of texts){
+    // try raw and whitespace-stripped
+    for(const src of [text, text.replace(/\s+/g,'')]){
+      RE.lastIndex=0; let m;
+      while((m=RE.exec(src))!==null){
+        const hash8=m[1].toUpperCase(), pubkey=m[2];
+        const key=hash8+':'+pubkey;
+        if(seen.has(key)) continue;
+        seen.add(key);
+        const ok=await selfCheck(pubkey,hash8);
+        out.push({hash8,pubkey,ok,normalized:'[SSDKEY:'+hash8+':'+pubkey+']'});
+      }
+    }
+  }
+  return out;
+}
+
+// ---- Main pipeline ---------------------------------------------------------
+async function handleImage(f){
+  if(!f||!f.type.startsWith('image/')){ showToast('Not an image file'); return; }
+  results.hidden=true; rawWrap.hidden=true;
+  preview.hidden=false; preview.src=URL.createObjectURL(f);
+  await new Promise(r=>preview.onload=r);
+  statusBox.hidden=false; statusText.textContent='Starting…'; barFill.style.width='0%';
+  const rawLog=[];
+
+  try{
+    // Pass 1: full-language OCR on full image — get text + word bboxes
+    statusText.textContent='Pass 1: full-image OCR…';
+    const w1=await getLangWorker();
+    const r1=await w1.recognize(f);
+    const pass1text=r1.data.text||'';
+    rawLog.push('=== PASS 1 (full language) ===\n'+pass1text.trim());
+
+    // Locate beacon region from pass-1 bboxes
+    const words = r1.data.words||[];
+    const region = bboxesToRegion(words, preview.naturalWidth, preview.naturalHeight);
+    rawLog.push('\n=== REGION DETECTED ===\n'+(region?JSON.stringify(region):'(none — using full image)'));
+
+    // Pass 2: whitelist OCR on cropped+upscaled+thresholded region
+    statusText.textContent='Pass 2: beacon-region OCR (whitelist)…';
+    const canvas = prepareCanvas(preview, region, 3);
+    const blob   = await canvasToBlob(canvas);
+    const w2=await getWLWorker();
+    const r2=await w2.recognize(blob);
+    const pass2text=r2.data.text||'';
+    rawLog.push('\n=== PASS 2 (whitelist, cropped×3) ===\n'+pass2text.trim());
+
+    barFill.style.width='100%';
+    statusText.textContent='Done';
+
+    raw.textContent=rawLog.join('\n');
+    rawWrap.hidden=false;
+
+    const beacons=await extract([pass1text, pass2text]);
+    render(beacons);
+  }catch(err){
+    statusText.textContent='Error: '+(err&&err.message?err.message:String(err));
+    barFill.style.width='0%';
+    raw.textContent=rawLog.join('\n');
+    rawWrap.hidden=false;
+  }
+}
+
+// ---- Rendering -------------------------------------------------------------
+function esc(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+
+function render(beacons){
+  results.hidden=false; list.innerHTML='';
+  const valid=beacons.filter(b=>b.ok);
+  count.textContent=beacons.length
+    ?'· '+beacons.length+' found, '+valid.length+' valid':'';
+  if(!beacons.length){
+    const li=document.createElement('li');
+    li.className='empty';
+    li.textContent='No SSDKEY beacons found. Check "Raw OCR passes" below — if the token is visible there with garbled characters, the hash8 self-check will tell you which beacon failed.';
+    list.appendChild(li); clip.value=''; copyBtn.disabled=true; return;
+  }
+  for(const b of beacons){
+    const li=document.createElement('li');
+    li.className='beacon '+(b.ok?'ok':'bad');
+    const tok='[SSDKEY:<span class="h">'+esc(b.hash8)+'</span>:'+esc(b.pubkey)+']';
+    li.innerHTML='<div class="rail"></div><div class="body"><div class="tok">'+tok+'</div>'
+      +'<div class="meta"><span class="chip '+(b.ok?'ok':'bad')+'">'+(b.ok?'HASH8 OK':'HASH8 FAIL')+'</span>'
+      +'<span class="note">'+(b.ok?'self-check passes':'hash8 mismatch — OCR error, excluded')+'</span></div></div>';
+    list.appendChild(li);
+  }
+  clip.value=valid.map(b=>b.normalized).join('\n');
+  copyBtn.disabled=valid.length===0;
+  if(valid.length) copyText(clip.value,true);
+}
+
+// ---- Clipboard -------------------------------------------------------------
+async function copyText(text,silent){
+  if(!text) return;
+  let ok=false;
+  try{await navigator.clipboard.writeText(text); ok=true;}
+  catch(_){try{clip.focus();clip.select();ok=document.execCommand('copy');window.getSelection().removeAllRanges();}catch(__){}}
+  if(!silent) showToast(ok?'Copied to clipboard':'Copy blocked — select text and copy manually');
+}
+let tt;
+function showToast(msg){toast.textContent=msg;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>toast.classList.remove('show'),2400);}
+
+// ---- Wiring ----------------------------------------------------------------
+pick.addEventListener('click',()=>file.click());
+file.addEventListener('change',()=>{if(file.files[0]) handleImage(file.files[0]);});
+copyBtn.addEventListener('click',()=>copyText(clip.value,false));
+['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
+['dragleave','dragend','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
+drop.addEventListener('drop',e=>{const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];if(f)handleImage(f);});
+document.addEventListener('paste',e=>{
+  const items=(e.clipboardData&&e.clipboardData.items)||[];
+  for(const it of items){if(it.type&&it.type.startsWith('image/')){const f=it.getAsFile();if(f){handleImage(f);break;}}}
+});
+})();
+</script>
+</body>
+</html>
