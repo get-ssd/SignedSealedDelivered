@@ -1,5 +1,5 @@
 // Must match APP_VERSION in index.html
-const CACHE_NAME = 'ssd-v70';
+const CACHE_NAME = 'ssd-v71';
 const SHELL = [
   './',
   './index.html',
@@ -10,6 +10,7 @@ const SHELL = [
   './passkey.js',
   './keyring.js',
   './signer-engines.js',
+  './opfs-identicon.js',
   './manifest.json',
   './favicon.ico',
   './icon-192.png',
