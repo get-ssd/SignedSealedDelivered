@@ -424,6 +424,7 @@
     <h3 id="qr-modal-title"></h3>
     <p id="qr-modal-desc"></p>
     <div class="qr-wrap"><div id="qr-canvas"></div></div>
+    <p id="qr-modal-payload" style="font-family:monospace;font-size:0.7em;word-break:break-all;background:#f4f4f4;padding:6px 8px;border-radius:4px;margin:8px 0;cursor:pointer" title="Tap to copy" onclick="navigator.clipboard.writeText(this.textContent)"></p>
     <button class="btn-secondary" onclick="app.closeQRModal()">Close</button>
   </div>
 </div>
@@ -466,7 +467,7 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
-const APP_VERSION = 'ssd-v68';
+const APP_VERSION = 'ssd-v69';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD-basic]', ...a);
@@ -1164,7 +1165,7 @@ const app = {
     const rec = await db.get('my_keys', keyId);
     if (!rec) return;
     const beacon = `[SSDKEY:${rec.hash8}:${rec.public_key_b64}]`;
-    await this._renderQRModal('Your SSDKEY beacon', `Share this QR so contacts can import your key. Fingerprint: ${rec.hash8}`, beacon);
+    await this._renderQRModal('Your SSDKEY beacon', 'Scan this to import your key as a contact on another device.', beacon);
   },
 
   async showKeyCardQR(keyId) {
@@ -1177,6 +1178,7 @@ const app = {
     }
     document.getElementById('qr-modal-title').textContent = title;
     document.getElementById('qr-modal-desc').textContent = desc;
+    document.getElementById('qr-modal-payload').textContent = payload;
     const canvas = document.getElementById('qr-canvas');
     canvas.innerHTML = '';
     try {
@@ -1214,6 +1216,7 @@ const app = {
   closeQRModal() {
     document.getElementById('qr-modal').style.display = 'none';
     document.getElementById('qr-canvas').innerHTML = '';
+    document.getElementById('qr-modal-payload').textContent = '';
   },
 
   async startBeaconScan() {
