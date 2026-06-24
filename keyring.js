@@ -177,17 +177,19 @@ const keyring = {
     const encKeySetting = await db.get('settings', 'my_encryption_key_pub');
     const cardData = {
       chain: [],
-      encryption_key: encKeySetting ? encKeySetting.value : null,
+      encryption_public_key: encKeySetting
+        ? cryptoOps.b64urlenc(cryptoOps.b64dec(encKeySetting.value))
+        : null,
       expires: rec.expires,
       hash8: rec.hash8,
       identicon_algorithm: rec.identicon_algorithm,
       issued: rec.created,
       name: rec.name,
-      public_key: rec.public_key_b64,
       recheck_interval_days: rec.recheck_interval_days ?? 90,
       revocation_hint: rec.revocation_hint,
       self_image: rec.self_image_b64,
       signing_algorithm: 'Ed25519',
+      signing_public_key: rec.public_key_b64,
       version: '1.0',
     };
     const sortedKeys = Object.keys(cardData).sort();
@@ -203,7 +205,7 @@ const keyring = {
     const sortedKeys = Object.keys(data).sort();
     const canonical = JSON.stringify(Object.fromEntries(sortedKeys.map(k => [k, data[k]])));
     const dataBytes = new TextEncoder().encode(canonical);
-    const publicKey = await cryptoOps.importPublicKeyB64(card.public_key);
+    const publicKey = await cryptoOps.importPublicKeyB64(card.signing_public_key);
     return cryptoOps.verify(publicKey, self_signed, dataBytes);
   },
 };

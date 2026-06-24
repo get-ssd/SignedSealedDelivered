@@ -467,7 +467,7 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
-const APP_VERSION = 'ssd-v71';
+const APP_VERSION = 'ssd-v72';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD-basic]', ...a);
@@ -1054,26 +1054,26 @@ const app = {
   },
 
   async _importKeyCard(card) {
-    if (!card.public_key || !card.hash8) throw new Error('Not a valid key card (missing public_key or hash8).');
+    if (!card.signing_public_key || !card.hash8) throw new Error('Not a valid key card (missing signing_public_key or hash8).');
     const normalized = {
       chain:                 card.chain                 ?? [],
-      encryption_key:        card.encryption_key        ?? null,
+      encryption_public_key: card.encryption_public_key ?? null,
       expires:               card.expires               ?? null,
       hash8:                 card.hash8,
       identicon_algorithm:   card.identicon_algorithm   ?? 'ssd-identicon-1.0',
       issued:                card.issued                ?? null,
       name:                  card.name,
-      public_key:            card.public_key,
       recheck_interval_days: card.recheck_interval_days ?? 90,
       revocation_hint:       card.revocation_hint       ?? null,
       self_image:            card.self_image            ?? null,
       self_signed:           card.self_signed,
       signing_algorithm:     card.signing_algorithm     ?? 'Ed25519',
+      signing_public_key:    card.signing_public_key,
       version:               card.version               ?? '1.0',
     };
     const valid = await keyring.verifyKeyCard(normalized);
     if (!valid) throw new Error('Key card signature is invalid — may have been tampered with.');
-    const fp = await cryptoOps.hash8(card.public_key);
+    const fp = await cryptoOps.hash8(card.signing_public_key);
     if (fp !== card.hash8) throw new Error('Fingerprint does not match public key — corrupt key card.');
     const existing = (await db.getAll('contact_keys')).find(k => k.hash8 === card.hash8);
     if (existing) { this.msg(`<span class="warn">Already have key ${card.hash8}.</span>`); return; }
@@ -1084,7 +1084,7 @@ const app = {
     if (!name) { this.clearMsg(); return; }
     await db.put('contact_keys', {
       id: window.crypto.randomUUID(), person_id: null, name,
-      hash8: card.hash8, public_key_b64: card.public_key,
+      hash8: card.hash8, public_key_b64: card.signing_public_key,
       identicon_algorithm: card.identicon_algorithm || 'ssd-identicon-1.0',
       self_image_b64: card.self_image || null, received_via: 'key-card',
       received_at: new Date().toISOString(), expires: card.expires || null,
