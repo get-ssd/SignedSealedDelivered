@@ -424,7 +424,7 @@
     <h3 id="qr-modal-title"></h3>
     <p id="qr-modal-desc"></p>
     <div class="qr-wrap"><div id="qr-canvas"></div></div>
-    <p id="qr-modal-payload" style="font-family:monospace;font-size:0.7em;word-break:break-all;background:#f4f4f4;padding:6px 8px;border-radius:4px;margin:8px 0;cursor:pointer" title="Tap to copy" onclick="navigator.clipboard.writeText(this.textContent)"></p>
+    <p id="qr-modal-payload" style="font-family:monospace;font-size:0.7em;word-break:break-all;background:#f4f4f4;padding:6px 8px;border-radius:4px;margin:8px 0;cursor:pointer;max-height:120px;overflow-y:auto" title="Tap to copy" onclick="navigator.clipboard.writeText(this.textContent)"></p>
     <button class="btn-secondary" onclick="app.closeQRModal()">Close</button>
   </div>
 </div>
@@ -467,7 +467,7 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
-const APP_VERSION = 'ssd-v69';
+const APP_VERSION = 'ssd-v70';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD-basic]', ...a);
@@ -733,8 +733,18 @@ const app = {
       const allKeys = await db.getAll('my_keys');
       const dKey = allKeys.find(k => k.name.startsWith('D:') && !k.is_revoked);
       const oKey = allKeys.find(k => k.name.startsWith('O:') && !k.is_revoked);
-      if (!dKey) { this.msg('Creating device key…'); await keyring.createKey('D:My Device'); }
-      if (!oKey) { this.msg('Creating owner identity…'); await keyring.createKey('O:My Identity'); }
+      if (!dKey) {
+        this.msg('Creating device key…');
+        const newD = await keyring.createKey('D:My Device');
+        const dCard = await keyring.exportKeyCard(newD.id);
+        await db.put('my_keys', { ...newD, signed_card: dCard });
+      }
+      if (!oKey) {
+        this.msg('Creating owner identity…');
+        const newO = await keyring.createKey('O:My Identity');
+        const oCard = await keyring.exportKeyCard(newO.id);
+        await db.put('my_keys', { ...newO, signed_card: oCard });
+      }
       this.msg('Setting up encryption key…');
       await keyring.ensureEncryptionKey();
       this.msg('<span class="ok">✓ Identity ready.</span>');
@@ -1039,7 +1049,7 @@ const app = {
             <div class="key-item-hash">${k.hash8}</div>
             <div class="btn-row" style="margin-top:0">
               <button class="btn-secondary" onclick="app.copyBeacon('${k.id}')">Copy beacon</button>
-              <button class="btn-secondary" onclick="app.showBeaconQR('${k.id}')">Show QR</button>
+              <button class="btn-secondary" onclick="app.showKeyCardQR('${k.id}')">Show QR</button>
             </div>
           </div>`).join('')
       : '<p class="muted">No owner keys yet — complete setup in Home.</p>';
@@ -1169,7 +1179,26 @@ const app = {
   },
 
   async showKeyCardQR(keyId) {
-    await this.showBeaconQR(keyId);
+    let rec = await db.get('my_keys', keyId);
+    if (!rec) return;
+    let card = rec.signed_card;
+    if (!card) {
+      // Lazy migration for keys minted before self-signed storage was introduced.
+      // Requires one unlock; stores the card so future displays are free reads.
+      try {
+        await this._unlock();
+        card = await keyring.exportKeyCard(keyId);
+        await db.put('my_keys', { ...rec, signed_card: card });
+      } catch(e) {
+        this.msg(`<span class="fail">Could not sign key card: ${e.message}</span>`);
+        return;
+      }
+    }
+    await this._renderQRModal(
+      'Your key card',
+      'Scan to add you as a contact on another device.',
+      JSON.stringify(card)
+    );
   },
 
   async _renderQRModal(title, desc, payload) {
@@ -1285,7 +1314,7 @@ const app = {
           if (codes.length) {
             log('decoded (BarcodeDetector):', codes[0].rawValue.slice(0, 80));
             this.stopQRScan();
-            this._handleScannedBeacon(codes[0].rawValue);
+            this._handleScanned(codes[0].rawValue);
             return;
           }
           if (typeof jsQR !== 'undefined') {
@@ -1294,7 +1323,7 @@ const app = {
             if (code) {
               log('decoded (jsQR):', code.data.slice(0, 80));
               this.stopQRScan();
-              this._handleScannedBeacon(code.data);
+              this._handleScanned(code.data);
               return;
             }
           }
@@ -1310,7 +1339,7 @@ const app = {
       if (code) {
         log('decoded (jsQR):', code.data.slice(0, 80));
         this.stopQRScan();
-        this._handleScannedBeacon(code.data);
+        this._handleScanned(code.data);
         return;
       }
     } else {
@@ -1331,10 +1360,26 @@ const app = {
     if (status) status.textContent = 'Point your camera at an SSDKEY QR code.';
   },
 
+  async _handleScanned(data) {
+    const trimmed = data.trim();
+    if (trimmed.startsWith('{')) {
+      this.msg('Importing key card…');
+      try {
+        const card = JSON.parse(trimmed);
+        await this._importKeyCard(card);
+      } catch(e) {
+        this.msg(`<span class="fail">Key card import failed: ${e.message}</span>`);
+      }
+      await this.tab('keys');
+    } else {
+      await this._handleScannedBeacon(trimmed);
+    }
+  },
+
   async _handleScannedBeacon(data) {
     const m = data.match(/[\[(]SSDKEY:([A-Za-z0-9_-]{8}):([A-Za-z0-9+/=_-]+)[\])]/);
     if (!m) {
-      this.msg('<span class="fail">QR does not contain an SSDKEY beacon.</span>');
+      this.msg('<span class="fail">QR does not contain a recognised key (expected key card JSON or SSDKEY beacon).</span>');
       return;
     }
     this.msg('Importing…');
