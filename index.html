@@ -409,6 +409,23 @@
   <h3>Imported keys</h3>
   <div id="keys-contact-list"></div>
 
+  <!-- Backup / Restore / Share -->
+  <div style="margin-top:32px;border-top:1px solid var(--border);padding-top:20px">
+    <h3>Backup &amp; restore</h3>
+    <p class="muted">Back up your identity as an encrypted .ssd file. Restore it on any device using your passkey.</p>
+    <button class="btn-secondary btn-block" onclick="app.backupIdentity()">Back up identity…</button>
+    <button class="btn-secondary btn-block" style="margin-top:8px" onclick="document.getElementById('keys-restore-file').click()">Restore from backup…</button>
+    <input id="keys-restore-file" type="file" accept=".ssd" style="display:none" onchange="if(this.files[0])app.restoreFromBackup(this.files[0])">
+  </div>
+
+  <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:20px">
+    <h3>Share public keys</h3>
+    <p class="muted">Export a signed, public-only .ssd artifact to share your identity with others or sync to Tick.</p>
+    <button class="btn-secondary btn-block" onclick="app.sharePublicKeys()">Share public keys…</button>
+    <button class="btn-secondary btn-block" style="margin-top:8px" onclick="document.getElementById('keys-share-import-file').click()">Import a key share…</button>
+    <input id="keys-share-import-file" type="file" accept=".ssd" style="display:none" onchange="if(this.files[0])app.importPublicShare(this.files[0])">
+  </div>
+
   <!-- Factory Reset -->
   <div style="margin-top:32px;border-top:1px solid var(--border);padding-top:20px">
     <h3>Factory reset</h3>
@@ -467,7 +484,7 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
-const APP_VERSION = 'ssd-v72';
+const APP_VERSION = 'ssd-v73';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD-basic]', ...a);
@@ -1318,7 +1335,12 @@ const app = {
   },
 
   async factoryReset() {
-    if (!confirm('Wipe ALL data on this device?\n\nThis deletes every key, contact, document, and setting. It cannot be undone.\n\nDownloaded .ssd files are not affected.')) return;
+    const allKeys = await db.getAll('my_keys');
+    const hasIdentity = allKeys.some(k => k.name.startsWith('O:') && !k.is_revoked);
+    const msg = hasIdentity
+      ? 'Wipe ALL data on this device?\n\nYou have a signing identity (O: key) that will be permanently lost unless you have already backed it up.\n\nUse "Back up identity" first if you have not done so.\n\nThis cannot be undone. Downloaded .ssd files are not affected.'
+      : 'Wipe ALL data on this device?\n\nThis deletes every key, contact, document, and setting. It cannot be undone.\n\nDownloaded .ssd files are not affected.';
+    if (!confirm(msg)) return;
     try {
       try {
         const root = await navigator.storage.getDirectory();
@@ -1337,6 +1359,237 @@ const app = {
       return;
     }
     location.reload();
+  },
+
+  async backupIdentity() {
+    this.msg('Preparing backup…');
+    try {
+      const allMyKeys = await db.getAll('my_keys');
+      const oKey = allMyKeys.find(k => k.name.startsWith('O:') && !k.is_revoked);
+      if (!oKey) { this.msg('<span class="warn">No owner key (O:) found — complete setup first.</span>'); return; }
+      const signerRec = allMyKeys.find(k => k.name.startsWith('D:') && !k.is_revoked)
+                     || allMyKeys.find(k => k.is_default && !k.is_revoked);
+      if (!signerRec) { this.msg('<span class="warn">No signing key available — create a device key first.</span>'); return; }
+
+      await this._unlock();
+
+      const signingPrivB64 = await keyring.exportKeyB64(oKey.id);
+      const myEncPubB64 = (await db.get('settings', 'my_encryption_key_pub'))?.value;
+      if (!myEncPubB64) { this.msg('<span class="warn">No encryption key found — generate one in Settings first.</span>'); return; }
+      const encPrivB64 = await keyring.exportEncryptionPrivateKeyB64(myEncPubB64);
+      const contacts = await db.getAll('contact_keys');
+
+      const enc = new TextEncoder();
+      const timestamp = new Date().toISOString();
+      const content = {
+        type: 'keyring-backup',
+        key_name: oKey.name, hash8: oKey.hash8,
+        signing_pub_b64: oKey.public_key_b64, signing_priv_b64: signingPrivB64,
+        encryption_pub_b64: myEncPubB64, encryption_priv_b64: encPrivB64,
+        identicon_algorithm: oKey.identicon_algorithm, self_image_b64: oKey.self_image_b64 ?? null,
+        created: oKey.created, expires: oKey.expires ?? null,
+        recheck_interval_days: oKey.recheck_interval_days ?? 90,
+        revocation_hint: oKey.revocation_hint ?? null,
+        contacts,
+      };
+      const engine = renderEngines['ssd-key-transfer-1.0'];
+      const fileHashes = {};
+      for (const [fname, bytes] of Object.entries(engine.hashTargets(content)))
+        fileHashes[fname] = 'sha256:' + await cryptoOps.sha256(bytes);
+
+      const privateKey = await keyring.getPrivateKey(signerRec.id);
+      const manifestObj = {
+        version: '1.0', render_spec: 'ssd-key-transfer-1.0',
+        signed_at: timestamp, signer_hash8: signerRec.hash8, signer_name: signerRec.name,
+        files: fileHashes,
+      };
+      const manifestBytes = enc.encode(JSON.stringify(manifestObj, null, 2));
+      const signature = await cryptoOps.sign(privateKey, manifestBytes);
+      const manifestHash = 'sha256:' + await cryptoOps.sha256(manifestBytes);
+      const signatureObj = { algorithm: 'Ed25519', signer_hash8: signerRec.hash8, capacity: ['ssd:author'], signed_at: timestamp, manifest_hash: manifestHash, signature };
+      const innerZip = await artifact.pack(content, 'ssd-key-transfer-1.0', manifestObj, signatureObj);
+
+      const outerMeta = JSON.stringify({ ssd: 'sealed-enc-v1', signed_at: timestamp, signer_hash8: signerRec.hash8, manifest_hash: manifestHash });
+      const outerSig = await cryptoOps.sign(privateKey, enc.encode(outerMeta));
+
+      const dekBytes = window.crypto.getRandomValues(new Uint8Array(32));
+      const dekKey = await cryptoOps.importAESKey(dekBytes);
+      const { iv_b64: dataIv, ct_b64: dataCt } = await cryptoOps.encryptBytes(innerZip, dekKey);
+      const recipientPub = await cryptoOps.importX25519PublicKeyB64(myEncPubB64);
+      const slot = { for_key: myEncPubB64, ...await cryptoOps.wrapDEK(dekBytes, recipientPub) };
+      const envelope = { ssd: 'sealed-enc-v1', signed_at: timestamp, signer_hash8: signerRec.hash8, manifest_hash: manifestHash, outer_sig: outerSig, recipients: [slot], iv: dataIv, ct: dataCt };
+      const outputBytes = enc.encode(JSON.stringify(envelope));
+
+      const blob = new Blob([outputBytes], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `ssd-backup-${oKey.hash8}-${Date.now()}.ssd`;
+      a.click(); URL.revokeObjectURL(url);
+      this.msg('<span class="ok">✓ Identity backup downloaded. Store it safely — it contains your private signing key.</span>');
+    } catch(e) {
+      this.msg(`<span class="fail">Backup failed: ${e.message}</span>`);
+    }
+  },
+
+  async restoreFromBackup(file) {
+    this.msg('Opening backup…');
+    try {
+      const rawBytes = new Uint8Array(await file.arrayBuffer());
+      let envelope;
+      try {
+        const parsed = JSON.parse(new TextDecoder().decode(rawBytes));
+        if (parsed.ssd === 'sealed-enc-v1') envelope = parsed;
+      } catch { /* not JSON */ }
+      if (!envelope) { this.msg('<span class="fail">Not a valid sealed backup — expected a sealed-enc-v1 envelope.</span>'); return; }
+
+      const myEncKeys = await db.getAll('encryption_keys');
+      const slot = envelope.recipients?.find(r => myEncKeys.some(k => k.pub === r.for_key));
+      if (!slot) { this.msg('<span class="fail">This backup was not sealed for any key on this device.</span>'); return; }
+
+      const allMyKeys = await db.getAll('my_keys');
+      const hasIdentity = allMyKeys.some(k => k.name.startsWith('O:') && !k.is_revoked);
+      if (hasIdentity && !confirm('This device already has a signing identity.\n\nRestoring will replace the existing O: key and encryption key. Your current identity will be lost unless separately backed up.\n\nContinue?')) {
+        this.clearMsg(); return;
+      }
+
+      this.msg('Authenticate to open backup…');
+      await this._unlock();
+
+      const myPriv = await keyring.getEncryptionPrivateKey(slot.for_key);
+      const dekBytes = await cryptoOps.unwrapDEK(slot, myPriv);
+      const dekKey = await cryptoOps.importAESKey(dekBytes);
+      const zipBytes = await cryptoOps.decryptBytes(envelope.iv, envelope.ct, dekKey);
+
+      const unpacked = await artifact.unpack(zipBytes);
+      if (unpacked.content.type !== 'keyring-backup') {
+        this.msg('<span class="fail">This file is not an identity backup.</span>'); return;
+      }
+
+      const c = unpacked.content;
+      const deviceName = prompt('Name for this device?', 'My Device');
+      if (!deviceName) { this.clearMsg(); return; }
+
+      await keyring.importKey(c.key_name, c.signing_pub_b64, c.signing_priv_b64);
+      await keyring.importEncryptionKey(c.encryption_pub_b64, c.encryption_priv_b64);
+      await keyring.createKey(`D:${deviceName.trim()}`);
+
+      if (c.contacts?.length) {
+        const existing = await db.getAll('contact_keys');
+        const existingHashes = new Set(existing.map(k => k.hash8));
+        for (const contact of c.contacts) {
+          if (!existingHashes.has(contact.hash8)) {
+            await db.put('contact_keys', { ...contact, id: window.crypto.randomUUID(), received_via: 'backup-restore', received_at: new Date().toISOString() });
+          }
+        }
+      }
+
+      await this.loadKeys();
+      this.msg(`<span class="ok">✓ Identity restored as <strong>${c.key_name}</strong> (${c.hash8}). A fresh device key D:${deviceName.trim()} has been created.</span>`);
+    } catch(e) {
+      this.msg(`<span class="fail">Restore failed: ${e.message}</span>`);
+    }
+  },
+
+  async sharePublicKeys() {
+    this.msg('Preparing public key share…');
+    try {
+      const allMyKeys = await db.getAll('my_keys');
+      const oKey = allMyKeys.find(k => k.name.startsWith('O:') && !k.is_revoked);
+      if (!oKey) { this.msg('<span class="warn">No owner key (O:) found — complete setup first.</span>'); return; }
+      const signerRec = allMyKeys.find(k => k.name.startsWith('D:') && !k.is_revoked)
+                     || allMyKeys.find(k => k.is_default && !k.is_revoked);
+      if (!signerRec) { this.msg('<span class="warn">No signing key available.</span>'); return; }
+
+      const myEncPubB64 = (await db.get('settings', 'my_encryption_key_pub'))?.value;
+      const contacts = await db.getAll('contact_keys');
+
+      const enc = new TextEncoder();
+      const timestamp = new Date().toISOString();
+      const content = {
+        type: 'keyring-share',
+        key_name: oKey.name, hash8: oKey.hash8,
+        signing_pub_b64: oKey.public_key_b64,
+        encryption_pub_b64: myEncPubB64 ?? null,
+        identicon_algorithm: oKey.identicon_algorithm,
+        created: oKey.created, expires: oKey.expires ?? null,
+        recheck_interval_days: oKey.recheck_interval_days ?? 90,
+        revocation_hint: oKey.revocation_hint ?? null,
+        contacts: contacts.map(({ id, person_id, ...pub }) => pub),
+      };
+
+      await this._unlock();
+      const privateKey = await keyring.getPrivateKey(signerRec.id);
+      const engine = renderEngines['ssd-key-transfer-1.0'];
+      const fileHashes = {};
+      for (const [fname, bytes] of Object.entries(engine.hashTargets(content)))
+        fileHashes[fname] = 'sha256:' + await cryptoOps.sha256(bytes);
+      const manifestObj = {
+        version: '1.0', render_spec: 'ssd-key-transfer-1.0',
+        signed_at: timestamp, signer_hash8: signerRec.hash8, signer_name: signerRec.name,
+        files: fileHashes,
+      };
+      const manifestBytes = enc.encode(JSON.stringify(manifestObj, null, 2));
+      const signature = await cryptoOps.sign(privateKey, manifestBytes);
+      const manifestHash = 'sha256:' + await cryptoOps.sha256(manifestBytes);
+      const signatureObj = { algorithm: 'Ed25519', signer_hash8: signerRec.hash8, capacity: ['ssd:author'], signed_at: timestamp, manifest_hash: manifestHash, signature };
+      const zipBytes = await artifact.pack(content, 'ssd-key-transfer-1.0', manifestObj, signatureObj);
+
+      const blob = new Blob([zipBytes], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `ssd-share-${oKey.hash8}-${Date.now()}.ssd`;
+      a.click(); URL.revokeObjectURL(url);
+      this.msg('<span class="ok">✓ Public key share downloaded — safe to distribute, contains no private material.</span>');
+    } catch(e) {
+      this.msg(`<span class="fail">Share export failed: ${e.message}</span>`);
+    }
+  },
+
+  async importPublicShare(file) {
+    this.msg('Verifying key share…');
+    try {
+      const rawBytes = new Uint8Array(await file.arrayBuffer());
+      const unpacked = await artifact.unpack(rawBytes);
+      if (unpacked.content.type !== 'keyring-share') {
+        this.msg('<span class="fail">This file is not a public key share.</span>'); return;
+      }
+      const result = await artifact.verify(unpacked);
+      if (!result.signature_valid || !result.content_unmodified) {
+        this.msg('<span class="fail">Signature invalid — file may have been tampered with.</span>'); return;
+      }
+      const c = unpacked.content;
+      let imported = 0, skipped = 0;
+      const existing = await db.getAll('contact_keys');
+      const myKeys = await db.getAll('my_keys');
+      const existingHashes = new Set(existing.map(k => k.hash8));
+      const myHashes = new Set(myKeys.map(k => k.hash8));
+
+      const mergeKey = async (hash8, pub_b64, name, extra = {}) => {
+        if (myHashes.has(hash8)) { skipped++; return; }
+        if (existingHashes.has(hash8)) { skipped++; return; }
+        await db.put('contact_keys', {
+          id: window.crypto.randomUUID(), person_id: null, name, hash8,
+          public_key_b64: pub_b64, identicon_algorithm: 'ssd-identicon-1.0',
+          self_image_b64: null, received_via: 'key-share',
+          received_at: new Date().toISOString(), expires: null,
+          recheck_interval_days: 90, last_checked: new Date().toISOString(),
+          revocation_hint: null, trust_type: 'peer', ...extra,
+        });
+        existingHashes.add(hash8);
+        imported++;
+      };
+
+      await mergeKey(c.hash8, c.signing_pub_b64, c.key_name);
+      for (const contact of (c.contacts ?? [])) {
+        if (contact.hash8 && contact.public_key_b64)
+          await mergeKey(contact.hash8, contact.public_key_b64, contact.name ?? contact.hash8);
+      }
+
+      await this.loadKeys();
+      this.msg(`<span class="ok">✓ Key share imported: ${imported} new key${imported !== 1 ? 's' : ''} added${skipped ? `, ${skipped} already known` : ''}.</span>`);
+    } catch(e) {
+      this.msg(`<span class="fail">Import failed: ${e.message}</span>`);
+    }
   },
 };
 

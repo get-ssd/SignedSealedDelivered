@@ -151,6 +151,20 @@ const keyring = {
     return cryptoOps.decryptPrivateKey(rec.private_key_encrypted, rec.private_key_iv, this._sessionKey);
   },
 
+  async exportEncryptionPrivateKeyB64(pubB64) {
+    if (!this._sessionKey) throw new Error('Keyring locked — authenticate first.');
+    const rec = await db.get('encryption_keys', pubB64);
+    if (!rec) throw new Error('No matching encryption key found.');
+    return cryptoOps.decryptPrivateKey(rec.enc, rec.iv, this._sessionKey);
+  },
+
+  async importEncryptionKey(pubB64, privB64) {
+    if (!this._sessionKey) throw new Error('Keyring locked — authenticate first.');
+    const { ciphertext_b64, iv_b64 } = await cryptoOps.encryptPrivateKey(privB64, this._sessionKey);
+    await db.put('encryption_keys', { pub: pubB64, enc: ciphertext_b64, iv: iv_b64, created: new Date().toISOString(), is_current: true });
+    await db.put('settings', { key: 'my_encryption_key_pub', value: pubB64 });
+  },
+
   async importKey(name, pubB64, privB64) {
     if (!this._sessionKey) throw new Error('Keyring locked — authenticate first.');
     const hash8 = await cryptoOps.hash8(pubB64);

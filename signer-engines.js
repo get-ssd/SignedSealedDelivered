@@ -112,7 +112,7 @@ const renderEngines = {
   },
 
   'ssd-key-transfer-1.0': {
-    _src(c) { return JSON.stringify({ key_name: c.key_name, signing_pub_b64: c.signing_pub_b64, signing_priv_b64: c.signing_priv_b64 }); },
+    _src(c) { return JSON.stringify(c); },
     pack(content)    { return { 'source.json': fflate.strToU8(this._src(content)) }; },
     unpack(files)    {
       if (!files['source.json']) throw new Error('Missing source.json in key transfer archive.');
@@ -122,7 +122,13 @@ const renderEngines = {
     toElement(content) {
       const pre = document.createElement('pre');
       pre.className = 'render-preview';
-      pre.textContent = `Key Transfer\nKey: ${content.key_name}\n\nThis document transfers a signing key to this device.\nVerify the sender below before importing.`;
+      if (content.type === 'keyring-backup') {
+        pre.textContent = `Identity Backup\nKey: ${content.key_name} (${content.hash8})\n\nThis sealed artifact contains your private signing identity.\nOpen it via Restore from backup on the Keys tab.`;
+      } else if (content.type === 'keyring-share') {
+        pre.textContent = `Public Key Share\nKey: ${content.key_name} (${content.hash8})\n\nThis artifact contains public keys only — no private material.\nImport it to add this identity to your keyring.`;
+      } else {
+        pre.textContent = `Key Transfer\nKey: ${content.key_name}\n\nThis document transfers a signing key to this device.\nVerify the sender below before importing.`;
+      }
       return pre;
     },
   },
