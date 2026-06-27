@@ -535,7 +535,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v73';
+const APP_VERSION = 'ssd-v74';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD]', ...a);
@@ -2919,10 +2919,6 @@ const app = {
       const allMyKeys = await db.getAll('my_keys');
       const oKey = allMyKeys.find(k => k.name.startsWith('O:') && !k.is_revoked);
       if (!oKey) { ui.display('<span class="fail">No owner key (O:) found — complete setup first.</span>'); return; }
-      const signerRec = allMyKeys.find(k => k.name.startsWith('D:') && !k.is_revoked)
-                     || allMyKeys.find(k => k.is_default && !k.is_revoked);
-      if (!signerRec) { ui.display('<span class="fail">No signing key available.</span>'); return; }
-
       const myEncPubB64 = (await db.get('settings', 'my_encryption_key_pub'))?.value;
       const contacts = await db.getAll('contact_keys');
 
@@ -2941,20 +2937,20 @@ const app = {
       };
 
       await this._unlock();
-      const privateKey = await keyring.getPrivateKey(signerRec.id);
+      const privateKey = await keyring.getPrivateKey(oKey.id);
       const engine = renderEngines['ssd-key-transfer-1.0'];
       const fileHashes = {};
       for (const [fname, bytes] of Object.entries(engine.hashTargets(content)))
         fileHashes[fname] = 'sha256:' + await cryptoOps.sha256(bytes);
       const manifestObj = {
         version: '1.0', render_spec: 'ssd-key-transfer-1.0',
-        signed_at: timestamp, signer_hash8: signerRec.hash8, signer_name: signerRec.name,
+        signed_at: timestamp, signer_hash8: oKey.hash8, signer_name: oKey.name,
         files: fileHashes,
       };
       const manifestBytes = enc.encode(JSON.stringify(manifestObj, null, 2));
       const signature = await cryptoOps.sign(privateKey, manifestBytes);
       const manifestHash = 'sha256:' + await cryptoOps.sha256(manifestBytes);
-      const signatureObj = { algorithm: 'Ed25519', signer_hash8: signerRec.hash8, capacity: ['ssd:author'], signed_at: timestamp, manifest_hash: manifestHash, signature };
+      const signatureObj = { algorithm: 'Ed25519', signer_hash8: oKey.hash8, capacity: ['ssd:author'], signed_at: timestamp, manifest_hash: manifestHash, signature };
       const zipBytes = await artifact.pack(content, 'ssd-key-transfer-1.0', manifestObj, signatureObj);
 
       const blob = new Blob([zipBytes], { type: 'application/octet-stream' });
@@ -2977,11 +2973,29 @@ const app = {
       if (unpacked.content.type !== 'keyring-share') {
         ui.display('<span class="fail">This file is not a public key share.</span>'); return;
       }
-      const result = await artifact.verify(unpacked);
-      if (!result.signature_valid || !result.content_unmodified) {
+      const { manifest, content: c, signature } = unpacked;
+      const enc = new TextEncoder();
+      // Verify content hash against manifest
+      const engine = renderEngines['ssd-key-transfer-1.0'];
+      for (const [fname, bytes] of Object.entries(engine.hashTargets(c))) {
+        if (('sha256:' + await cryptoOps.sha256(bytes)) !== manifest.files?.[fname]) {
+          ui.display('<span class="fail">Content hash mismatch — file may have been tampered with.</span>'); return;
+        }
+      }
+      // Verify manifest hash then Ed25519 self-signature
+      const manifestBytes = enc.encode(JSON.stringify(manifest, null, 2));
+      const manifestHash = 'sha256:' + await cryptoOps.sha256(manifestBytes);
+      if (manifestHash !== signature.manifest_hash) {
+        ui.display('<span class="fail">Manifest hash mismatch — file may have been tampered with.</span>'); return;
+      }
+      const embeddedHash8 = await cryptoOps.hash8(c.signing_pub_b64);
+      if (signature.signer_hash8 !== embeddedHash8) {
+        ui.display('<span class="fail">Key share is not self-signed — re-export from a current SSD version.</span>'); return;
+      }
+      const pubKey = await cryptoOps.importPublicKeyB64(c.signing_pub_b64);
+      if (!await cryptoOps.verify(pubKey, signature.signature, manifestBytes)) {
         ui.display('<span class="fail">Signature invalid — file may have been tampered with.</span>'); return;
       }
-      const c = unpacked.content;
       let imported = 0, skipped = 0;
       const existing = await db.getAll('contact_keys');
       const myKeys = await db.getAll('my_keys');
