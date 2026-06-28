@@ -150,10 +150,11 @@ const artifact = {
     let files;
     try { files = fflate.unzipSync(sealedBytes); }
     catch { throw new Error('File is not a valid .ssd archive.'); }
-    for (const f of ['manifest.json', 'signature.json'])
-      if (!files[f]) throw new Error(`Missing ${f} in archive.`);
+    if (!files['manifest.json']) throw new Error('Missing manifest.json in archive.');
     const manifest  = JSON.parse(fflate.strFromU8(files['manifest.json']));
-    const signature = JSON.parse(fflate.strFromU8(files['signature.json']));
+    const signature = files['signature.json']
+      ? JSON.parse(fflate.strFromU8(files['signature.json']))
+      : null;
     const engine = renderEngines[manifest.render_spec];
     if (!engine) throw new Error(`Unknown render spec: ${manifest.render_spec}`);
     const content = engine.unpack(files);

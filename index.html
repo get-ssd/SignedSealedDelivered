@@ -1557,18 +1557,22 @@ const app = {
           this.msg('<span class="fail">Content hash mismatch — file may have been tampered with.</span>'); return;
         }
       }
-      const manifestBytes = enc.encode(JSON.stringify(manifest, null, 2));
-      const manifestHash = 'sha256:' + await cryptoOps.sha256(manifestBytes);
-      if (manifestHash !== signature.manifest_hash) {
-        this.msg('<span class="fail">Manifest hash mismatch — file may have been tampered with.</span>'); return;
-      }
-      const embeddedHash8 = await cryptoOps.hash8(c.signing_pub_b64);
-      if (signature.signer_hash8 !== embeddedHash8) {
-        this.msg('<span class="fail">Key share is not self-signed — re-export from a current SSD version.</span>'); return;
-      }
-      const pubKey = await cryptoOps.importPublicKeyB64(c.signing_pub_b64);
-      if (!await cryptoOps.verify(pubKey, signature.signature, manifestBytes)) {
-        this.msg('<span class="fail">Signature invalid — file may have been tampered with.</span>'); return;
+      if (signature === null) {
+        this.msg('<span class="warn">Unsigned key share — keys not cryptographically verified. Importing…</span>');
+      } else {
+        const manifestBytes = enc.encode(JSON.stringify(manifest, null, 2));
+        const manifestHash = 'sha256:' + await cryptoOps.sha256(manifestBytes);
+        if (manifestHash !== signature.manifest_hash) {
+          this.msg('<span class="fail">Manifest hash mismatch — file may have been tampered with.</span>'); return;
+        }
+        const embeddedHash8 = await cryptoOps.hash8(c.signing_pub_b64);
+        if (signature.signer_hash8 !== embeddedHash8) {
+          this.msg('<span class="fail">Key share is not self-signed — re-export from a current SSD version.</span>'); return;
+        }
+        const pubKey = await cryptoOps.importPublicKeyB64(c.signing_pub_b64);
+        if (!await cryptoOps.verify(pubKey, signature.signature, manifestBytes)) {
+          this.msg('<span class="fail">Signature invalid — file may have been tampered with.</span>'); return;
+        }
       }
       let imported = 0, skipped = 0;
       const existing = await db.getAll('contact_keys');
@@ -1591,7 +1595,8 @@ const app = {
         imported++;
       };
 
-      await mergeKey(c.hash8, c.signing_pub_b64, c.key_name);
+      if (c.hash8 && c.signing_pub_b64)
+        await mergeKey(c.hash8, c.signing_pub_b64, c.key_name);
       for (const contact of (c.contacts ?? [])) {
         if (contact.hash8 && contact.public_key_b64)
           await mergeKey(contact.hash8, contact.public_key_b64, contact.name ?? contact.hash8);
