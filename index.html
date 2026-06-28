@@ -484,7 +484,7 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
-const APP_VERSION = 'ssd-v74';
+const APP_VERSION = 'ssd-v75';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD-basic]', ...a);
@@ -1558,7 +1558,10 @@ const app = {
         }
       }
       if (signature === null) {
-        this.msg('<span class="warn">Unsigned key share — keys not cryptographically verified. Importing…</span>');
+        const totalKeys = (c.hash8 && c.signing_pub_b64 ? 1 : 0) + (c.contacts ?? []).filter(ct => ct.hash8 && ct.public_key_b64).length;
+        if (!confirm(`Unsigned key share — not cryptographically verified.\nImport ${totalKeys} key${totalKeys !== 1 ? 's' : ''}?`)) {
+          this.msg('<span class="warn">Import cancelled.</span>'); return;
+        }
       } else {
         const manifestBytes = enc.encode(JSON.stringify(manifest, null, 2));
         const manifestHash = 'sha256:' + await cryptoOps.sha256(manifestBytes);
@@ -1596,10 +1599,10 @@ const app = {
       };
 
       if (c.hash8 && c.signing_pub_b64)
-        await mergeKey(c.hash8, c.signing_pub_b64, c.key_name);
+        await mergeKey(c.hash8, c.signing_pub_b64, c.key_name, c.source ? { source: c.source } : {});
       for (const contact of (c.contacts ?? [])) {
         if (contact.hash8 && contact.public_key_b64)
-          await mergeKey(contact.hash8, contact.public_key_b64, contact.name ?? contact.hash8);
+          await mergeKey(contact.hash8, contact.public_key_b64, contact.name ?? contact.hash8, contact.source ? { source: contact.source } : {});
       }
 
       await this.loadKeys();

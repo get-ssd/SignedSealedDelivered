@@ -535,7 +535,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v74';
+const APP_VERSION = 'ssd-v75';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD]', ...a);
@@ -2983,7 +2983,10 @@ const app = {
         }
       }
       if (signature === null) {
-        ui.display('<span class="warn">Unsigned key share — keys not cryptographically verified. Importing…</span>');
+        const totalKeys = (c.hash8 && c.signing_pub_b64 ? 1 : 0) + (c.contacts ?? []).filter(ct => ct.hash8 && ct.public_key_b64).length;
+        if (!confirm(`Unsigned key share — not cryptographically verified.\nImport ${totalKeys} key${totalKeys !== 1 ? 's' : ''}?`)) {
+          ui.display('<span class="warn">Import cancelled.</span>'); return;
+        }
       } else {
         // Verify manifest hash then Ed25519 self-signature
         const manifestBytes = enc.encode(JSON.stringify(manifest, null, 2));
@@ -3006,7 +3009,7 @@ const app = {
       const existingHashes = new Set(existing.map(k => k.hash8));
       const myHashes = new Set(myKeys.map(k => k.hash8));
 
-      const mergeKey = async (hash8, pub_b64, name) => {
+      const mergeKey = async (hash8, pub_b64, name, extra = {}) => {
         if (myHashes.has(hash8) || existingHashes.has(hash8)) { skipped++; return; }
         await db.put('contact_keys', {
           id: window.crypto.randomUUID(), person_id: null, name, hash8,
@@ -3014,17 +3017,17 @@ const app = {
           self_image_b64: null, received_via: 'key-share',
           received_at: new Date().toISOString(), expires: null,
           recheck_interval_days: 90, last_checked: new Date().toISOString(),
-          revocation_hint: null, trust_type: 'peer',
+          revocation_hint: null, trust_type: 'peer', ...extra,
         });
         existingHashes.add(hash8);
         imported++;
       };
 
       if (c.hash8 && c.signing_pub_b64)
-        await mergeKey(c.hash8, c.signing_pub_b64, c.key_name);
+        await mergeKey(c.hash8, c.signing_pub_b64, c.key_name, c.source ? { source: c.source } : {});
       for (const contact of (c.contacts ?? [])) {
         if (contact.hash8 && contact.public_key_b64)
-          await mergeKey(contact.hash8, contact.public_key_b64, contact.name ?? contact.hash8);
+          await mergeKey(contact.hash8, contact.public_key_b64, contact.name ?? contact.hash8, contact.source ? { source: contact.source } : {});
       }
 
       await this.loadKeyring();
