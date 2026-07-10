@@ -484,7 +484,7 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
-const APP_VERSION = 'ssd-v75';
+const APP_VERSION = 'ssd-v76';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD-basic]', ...a);
@@ -1006,7 +1006,10 @@ const app = {
               ${k.is_default ? '<span class="badge badge-primary">Default</span>' : ''}
             </div>
             <div class="key-item-hash">${k.hash8}</div>
-            ${k.is_revoked ? '' : `<button class="btn-secondary" onclick="app.showKeyCardQR('${k.id}')">Show QR</button>`}
+            ${k.is_revoked ? '' : `<div class="btn-row" style="margin-top:0">
+              <button class="btn-secondary" onclick="app.showKeyCardQR('${k.id}')">Show QR</button>
+              <button class="btn-danger" onclick="app.promptRevokeKey('${k.id}')">Revoke</button>
+            </div>`}
           </div>`).join('')
       : '<p class="muted">No keys.</p>';
 
@@ -1142,6 +1145,58 @@ const app = {
       'Scan to add you as a contact on another device.',
       JSON.stringify(card)
     );
+  },
+
+  async promptRevokeKey(keyId) {
+    const rec = await db.get('my_keys', keyId);
+    if (!rec) return;
+    const note = prompt(
+      `Revoke ${rec.name} [${rec.hash8}]?\n\nThis signs and downloads a revocation notice. Anyone holding this key will see it as REVOKED once they import the notice. Edit the note below if you want (e.g. add an effective date) — it is not a signed field, just covering text.`,
+      `I revoke key ${rec.hash8}.`
+    );
+    if (note === null) return;
+    await this.revokeKey(keyId, note);
+  },
+
+  async revokeKey(keyId, note) {
+    const rec = await db.get('my_keys', keyId);
+    if (!rec) return;
+    this.msg('Signing revocation…');
+    try {
+      await this._unlock();
+      const enc      = new TextEncoder();
+      const engine    = renderEngines['ssd-render-1.0'];
+      const capacity  = ['ssd:revocation'];
+      const canonical = signer.canonicalise(note);
+      const timestamp = new Date().toISOString();
+      const block     = signer.buildSignatureBlock(rec.hash8, rec.name, timestamp, capacity);
+      const render    = signer.buildRender(canonical, block);
+      const content   = { source: canonical, render };
+      const files = {};
+      for (const [name, bytes] of Object.entries(engine.hashTargets(content)))
+        files[name] = 'sha256:' + await cryptoOps.sha256(bytes);
+      const manifestObj = {
+        version: '1.0', render_spec: 'ssd-render-1.0',
+        signed_at: timestamp, signer_hash8: rec.hash8, signer_name: rec.name, files,
+      };
+      const manifestBytes = enc.encode(JSON.stringify(manifestObj, null, 2));
+      const privateKey    = await keyring.getPrivateKey(keyId);
+      const signature     = await this._confirmSign(privateKey, manifestBytes);
+      const manifestHash  = 'sha256:' + await cryptoOps.sha256(manifestBytes);
+      const signatureObj  = {
+        algorithm: 'Ed25519', signer_hash8: rec.hash8, capacity,
+        signed_at: timestamp, manifest_hash: manifestHash, signature,
+      };
+      const zipBytes = await artifact.pack(content, 'ssd-render-1.0', manifestObj, signatureObj);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([zipBytes], { type: 'application/octet-stream' }));
+      a.download = `revocation-${rec.hash8}-${Date.now()}.ssd`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      this.msg(`<span class="ok">✓ Revocation notice for ${this._esc(rec.name)} [${rec.hash8}] signed and downloaded.</span><div class="muted" style="margin-top:8px">Share this file with anyone who holds this key so they can mark it revoked.</div>`);
+    } catch(e) {
+      this.msg(`<span class="fail">Revocation failed: ${e.message}</span>`);
+    }
   },
 
   async _renderQRModal(title, desc, payload) {

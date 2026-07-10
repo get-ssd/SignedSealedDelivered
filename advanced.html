@@ -535,7 +535,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v75';
+const APP_VERSION = 'ssd-v76';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD]', ...a);
@@ -813,9 +813,76 @@ const app = {
         <button class="btn-secondary" onclick="app.validateKey('${rec.id}')">Validate</button>
         <button class="btn-secondary" onclick="app.renameMyKey('${rec.id}')">Rename</button>
         ${rec.name.startsWith('O:') ? `<button class="btn-secondary" onclick="app.transferOwnerKey('${rec.id}')">Transfer to device…</button>` : ''}
+        ${rec.is_revoked ? '' : `<button class="btn-danger" onclick="app.promptRevokeKey('${rec.id}')">Revoke this key</button>`}
         <button class="btn-danger" onclick="app.deleteKey('${rec.id}')">Delete</button>
       </div>`;
     return div;
+  },
+
+  async promptRevokeKey(keyId) {
+    const rec = await db.get('my_keys', keyId);
+    if (!rec) return;
+    const note = prompt(
+      `Revoke ${rec.name} [${rec.hash8}]?\n\nThis signs and downloads a revocation notice. Anyone holding this key will see it as REVOKED once they import the notice. Edit the note below if you want (e.g. add an effective date) — it is not a signed field, just covering text.`,
+      `I revoke key ${rec.hash8}.`
+    );
+    if (note === null) return;
+    await this.revokeKey(keyId, note);
+  },
+
+  async revokeKey(keyId, note) {
+    const rec = await db.get('my_keys', keyId);
+    if (!rec) return;
+    ui.clear();
+    ui.display('Signing revocation…');
+    try {
+      await this._unlock();
+      const enc      = new TextEncoder();
+      const engine    = renderEngines['ssd-render-1.0'];
+      const capacity  = ['ssd:revocation'];
+      const canonical = signer.canonicalise(note);
+      const wrapped   = signer.wrap(canonical);
+      const timestamp = new Date().toISOString();
+      const block     = signer.buildSignatureBlock(rec.hash8, rec.name, timestamp, capacity);
+      const render    = signer.buildRender(wrapped, block);
+      const content   = { source: wrapped, render };
+      const files = {};
+      for (const [name, bytes] of Object.entries(engine.hashTargets(content)))
+        files[name] = 'sha256:' + await cryptoOps.sha256(bytes);
+      const manifestObj = {
+        version: '1.0', render_spec: 'ssd-render-1.0',
+        signed_at: timestamp, signer_hash8: rec.hash8, signer_name: rec.name, files,
+      };
+      const manifestBytes = enc.encode(JSON.stringify(manifestObj, null, 2));
+      const privateKey    = await keyring.getPrivateKey(keyId);
+      // Its own re-prompt gesture — not the direct cryptoOps.sign this shell's other flows use post-unlock.
+      const signature     = await passkey.confirmAndSign(privateKey, manifestBytes);
+      const manifestHash  = 'sha256:' + await cryptoOps.sha256(manifestBytes);
+      const signatureObj  = {
+        algorithm: 'Ed25519', signer_hash8: rec.hash8, capacity,
+        signed_at: timestamp, manifest_hash: manifestHash, signature,
+      };
+      const zipBytes = await artifact.pack(content, 'ssd-render-1.0', manifestObj, signatureObj);
+      const blob = new Blob([zipBytes], { type: 'application/octet-stream' });
+      const url  = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `revocation-${rec.hash8}-${Date.now()}.ssd`;
+      a.click(); URL.revokeObjectURL(url);
+      ui.display(`<div class="ok">✓ Revocation notice for ${rec.name} [${rec.hash8}] signed and downloaded.</div><div style="margin-top:8px;color:var(--text-muted);font-size:12px">Share this file with anyone who holds this key so they can mark it revoked.</div>`);
+    } catch(e) {
+      ui.display(`<span class="fail">Revocation failed: ${e.message}</span>`);
+      console.error(e);
+    }
+  },
+
+  // Reader side: a valid self-signed ssd:revocation marks any held key at signer_hash8 revoked.
+  async applyRevocation(hash8) {
+    let marked = false;
+    const myRec = (await db.getAll('my_keys')).find(k => k.hash8 === hash8);
+    if (myRec) { if (!myRec.is_revoked) await db.put('my_keys', { ...myRec, is_revoked: true }); marked = true; }
+    const contactRec = (await db.getAll('contact_keys')).find(k => k.hash8 === hash8);
+    if (contactRec) { if (!contactRec.is_revoked) await db.put('contact_keys', { ...contactRec, is_revoked: true }); marked = true; }
+    return marked;
   },
 
   async loadComposeKeys() {
@@ -1360,6 +1427,13 @@ const app = {
       document.getElementById('results').appendChild(unpacked.engine.toElement(unpacked.content));
       const sealStatus = wasEncrypted ? { state: 'opened', identity: openedAs } : { state: 'public' };
       ui.displayVerification(result, sealStatus);
+
+      if (unpacked.signature?.capacity?.includes('ssd:revocation') && result.signature_valid && result.content_unmodified) {
+        const marked = await this.applyRevocation(result.signer_hash8);
+        ui.display(marked
+          ? `<div class="warn" style="margin-top:10px">⚠ Self-signed revocation notice for key <span class="mono">${result.signer_hash8}</span> — that key is now marked <strong>revoked</strong> in your keyring. Signatures under it will show REVOKED.</div>`
+          : `<div class="info" style="margin-top:10px">Self-signed revocation notice for key <span class="mono">${result.signer_hash8}</span>, which is not in your keyring — nothing to mark.</div>`);
+      }
 
       if (result.render_spec === 'ssd-key-transfer-1.0') {
         const contactKeys   = await db.getAll('contact_keys');
