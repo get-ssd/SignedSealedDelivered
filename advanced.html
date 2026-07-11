@@ -535,7 +535,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v76';
+const APP_VERSION = 'ssd-v77';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD]', ...a);
@@ -2858,6 +2858,7 @@ const app = {
   async backupIdentity() {
     ui.clear();
     ui.display('Preparing backup…');
+    let step = 'load-keys';
     try {
       const allMyKeys = await db.getAll('my_keys');
       const oKey = allMyKeys.find(k => k.name.startsWith('O:') && !k.is_revoked);
@@ -2866,11 +2867,14 @@ const app = {
                      || allMyKeys.find(k => k.is_default && !k.is_revoked);
       if (!signerRec) { ui.display('<span class="fail">No signing key available.</span>'); return; }
 
+      step = 'unlock';
       await this._unlock();
 
+      step = 'export-signing-key';
       const signingPrivB64 = await keyring.exportKeyB64(oKey.id);
       const myEncPubB64 = (await db.get('settings', 'my_encryption_key_pub'))?.value;
       if (!myEncPubB64) { ui.display('<span class="fail">No encryption key found — generate one in Settings first.</span>'); return; }
+      step = 'export-encryption-key';
       const encPrivB64 = await keyring.exportEncryptionPrivateKeyB64(myEncPubB64);
       const contacts = await db.getAll('contact_keys');
 
@@ -2892,6 +2896,7 @@ const app = {
       for (const [fname, bytes] of Object.entries(engine.hashTargets(content)))
         fileHashes[fname] = 'sha256:' + await cryptoOps.sha256(bytes);
 
+      step = 'sign-manifest';
       const privateKey = await keyring.getPrivateKey(signerRec.id);
       const manifestObj = {
         version: '1.0', render_spec: 'ssd-key-transfer-1.0',
@@ -2907,6 +2912,7 @@ const app = {
       const outerMeta = JSON.stringify({ ssd: 'sealed-enc-v1', signed_at: timestamp, signer_hash8: signerRec.hash8, manifest_hash: manifestHash });
       const outerSig = await cryptoOps.sign(privateKey, enc.encode(outerMeta));
 
+      step = 'seal';
       const dekBytes = window.crypto.getRandomValues(new Uint8Array(32));
       const dekKey = await cryptoOps.importAESKey(dekBytes);
       const { iv_b64: dataIv, ct_b64: dataCt } = await cryptoOps.encryptBytes(innerZip, dekKey);
@@ -2922,7 +2928,12 @@ const app = {
       a.click(); URL.revokeObjectURL(url);
       ui.display('<div class="ok">✓ Identity backup downloaded. Store it safely — it contains your private signing key.</div>');
     } catch(e) {
-      ui.display(`<span class="fail">Backup failed: ${e.message}</span>`);
+      console.error('[backupIdentity] failed at step:', step, e);
+      if (e.name === 'OperationError' && (step === 'export-signing-key' || step === 'export-encryption-key' || step === 'sign-manifest')) {
+        ui.display('<span class="fail">Backup failed: a key on this device can’t be unlocked with your current passkey. It was created before your current passkey/PIN and needs recovery. No backup was written.</span>');
+      } else {
+        ui.display(`<span class="fail">Backup failed (${step}): ${e.message || e.name || e}</span>`);
+      }
     }
   },
 
