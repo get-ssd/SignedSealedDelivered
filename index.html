@@ -234,8 +234,11 @@
 <div id="panel-home" class="panel active">
   <h2>Home</h2>
 
-  <!-- Wizard (hidden when complete) -->
-  <div id="home-wizard">
+  <!-- Neutral state until the identity/completion read resolves -->
+  <div id="home-loading" class="muted">Loading…</div>
+
+  <!-- Wizard (hidden until the read says to show it; hidden once complete) -->
+  <div id="home-wizard" style="display:none">
     <p class="muted" style="margin-bottom:16px">Set up your signing identity to get started.</p>
     <div class="wizard-steps">
 
@@ -272,7 +275,7 @@
   <!-- Version -->
   <div id="app-version" class="muted" style="margin-top:24px;text-align:center;font-size:12px"></div>
 
-  <!-- Status (hidden when wizard not done) -->
+  <!-- Status (hidden until the wizard has been completed through step 3) -->
   <div id="home-status" style="display:none">
     <div class="identity-card">
       <canvas id="home-identicon" width="64" height="64"></canvas>
@@ -484,7 +487,7 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
-const APP_VERSION = 'ssd-v77';
+const APP_VERSION = 'ssd-v78';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD-basic]', ...a);
@@ -543,29 +546,36 @@ const app = {
     const allKeys = await db.getAll('my_keys');
     const dKey = allKeys.find(k => k.name.startsWith('D:') && !k.is_revoked);
     const oKey = allKeys.find(k => k.name.startsWith('O:') && !k.is_revoked);
-    const done = hasKeyring && dKey && oKey;
+    const hasIdentity = !!(hasKeyring && dKey && oKey);
+    const wizardDone = !!(await db.get('settings', 'home_wizard_done'))?.value;
 
-    document.getElementById('home-wizard').style.display = done ? 'none' : '';
-    document.getElementById('home-status').style.display = done ? '' : 'none';
+    // Collapse only once the wizard has been completed through step 3 (the beacon
+    // share). An identity alone is step 2's product, not the end of onboarding.
+    // Identity is still required — the status view renders from the O: key.
+    const collapsed = hasIdentity && wizardDone;
 
-    if (!done) {
-      this._updateWizardSteps(hasKeyring, dKey, oKey);
-    } else {
-      await this._renderHomeStatus(oKey, rungRec.value);
-    }
+    // Render the target view before revealing it, so Home never paints a wrong
+    // or half-filled state: one atomic swap out of the neutral loading state.
+    if (collapsed) await this._renderHomeStatus(oKey, rungRec.value);
+    else           this._updateWizardSteps(hasKeyring, dKey, oKey, wizardDone);
+
+    document.getElementById('home-loading').style.display = 'none';
+    document.getElementById('home-wizard').style.display = collapsed ? 'none' : '';
+    document.getElementById('home-status').style.display = collapsed ? '' : 'none';
   },
 
-  _updateWizardSteps(hasKeyring, dKey, oKey) {
+  _updateWizardSteps(hasKeyring, dKey, oKey, step3done) {
     const step1done = hasKeyring;
-    const step2done = hasKeyring && dKey && oKey;
+    const step2done = !!(hasKeyring && dKey && oKey);
 
     const setClass = (id, done, current) =>
       document.getElementById(id).className = `step ${done ? 'done' : current ? 'current' : 'pending'}`;
 
     setClass('wz-1', step1done, !step1done);
     setClass('wz-2', step2done, step1done && !step2done);
-    setClass('wz-3', false, step2done);
+    setClass('wz-3', step3done, step2done && !step3done);
 
+    // Completed steps stay disabled: resuming at step 3 must never re-run 1 or 2.
     document.getElementById('wz-btn-1').disabled = step1done;
     document.getElementById('wz-btn-2').disabled = !step1done || step2done;
     document.getElementById('wz-btn-3').disabled = !step2done;
@@ -708,6 +718,9 @@ const app = {
     } catch {
       this.msg(`<p class="muted" style="margin-bottom:8px">Copy this into your social media bio:</p><div class="token-box">${this._esc(token)}</div>`);
     }
+    // Beacon presented (copied, or shown for manual copy) — wizard step 3 is done.
+    await db.put('settings', { key: 'home_wizard_done', value: true });
+    await this.refreshHome();
   },
 
   // ── SOCIAL ────────────────────────────────────────────────────────────────
