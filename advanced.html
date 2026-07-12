@@ -535,7 +535,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v78';
+const APP_VERSION = 'ssd-v79';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD]', ...a);
@@ -2149,7 +2149,7 @@ const app = {
       const deviceNameSetting = await db.get('settings', 'my_device_name');
       const deviceName = deviceNameSetting ? deviceNameSetting.value : null;
 
-      const qrPayload = `[SSDKEY:${card.hash8}:${card.public_key}]`;
+      const qrPayload = `[SSDKEY:${card.hash8}:${card.signing_public_key}]`;
       log('QR payload bytes:', qrPayload.length);
       await this._showQRModal('Your SSDKEY beacon', `Share this so contacts can import your key. Fingerprint: ${card.hash8}`, qrPayload, null);
     } catch(e) {

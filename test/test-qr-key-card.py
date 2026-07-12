@@ -81,7 +81,7 @@ async () => {
   const dPayload = JSON.stringify(dCard);
   const parsedDCard = JSON.parse(dPayload);
   const dCardValid = await keyring.verifyKeyCard(parsedDCard);
-  const fpMatch = (await cryptoOps.hash8(parsedDCard.public_key)) === parsedDCard.hash8;
+  const fpMatch = (await cryptoOps.hash8(parsedDCard.signing_public_key)) === parsedDCard.hash8;
 
   // ── _handleScanned routing (simulates both branches) ────────────────────
   // JSON branch: a valid key-card JSON string should parse without throwing
@@ -93,11 +93,24 @@ async () => {
   const beaconStr = `[SSDKEY:${oKey.hash8}:${oKey.public_key_b64}]`;
   const beaconPayloadRoutes = beaconStr.trim().startsWith('[') || beaconStr.trim().startsWith('(');
 
+  // ── Card field shape ─────────────────────────────────────────────────────
+  // The key card's public-key field is signing_public_key. Code that reads
+  // card.public_key gets undefined — which is exactly how advanced.html's
+  // showKeyCardQR shipped a `[SSDKEY:<hash8>:undefined]` beacon, and how this
+  // test's own hash8 check threw before any assertion could run.
+  const hasSigningPubKey = typeof dCard.signing_public_key === 'string' && dCard.signing_public_key.length > 0;
+  const hasNoBarePubKey  = !('public_key' in dCard);
+  const beaconFromCard   = `[SSDKEY:${dCard.hash8}:${dCard.signing_public_key}]`;
+  const beaconWellFormed = !beaconFromCard.includes('undefined');
+
   return {
     cardValid,
     rtValid,
     dCardValid,
     fpMatch,
+    hasSigningPubKey,
+    hasNoBarePubKey,
+    beaconWellFormed,
     jsonPayloadRoutes,
     beaconPayloadRoutes,
     oHash8: oKey.hash8,
@@ -151,8 +164,17 @@ async def main():
                 if r['dCardValid']:      ok(f"Third-key card parse + verifyKeyCard valid (D: {r['dHash8']})")
                 else:                    fail("Third-key card parse + verifyKeyCard FAILED")
 
-                if r['fpMatch']:         ok("hash8 fingerprint matches public_key in parsed card")
+                if r['fpMatch']:         ok("hash8 fingerprint matches signing_public_key in parsed card")
                 else:                    fail("hash8 fingerprint MISMATCH in parsed card")
+
+                if r['hasSigningPubKey'] and r['hasNoBarePubKey']:
+                    ok("Card carries signing_public_key (and no bare public_key field)")
+                else:
+                    fail(f"Card field shape wrong: signing_public_key present={r['hasSigningPubKey']}, "
+                         f"no bare public_key={r['hasNoBarePubKey']}")
+
+                if r['beaconWellFormed']: ok("Beacon built from a key card contains a key, not 'undefined'")
+                else:                    fail("Beacon built from a key card contains 'undefined' — wrong field read")
 
                 if r['jsonPayloadRoutes']:   ok("_handleScanned: JSON payload routes to JSON branch (starts with '{')")
                 else:                        fail("_handleScanned: JSON payload does NOT start with '{'")
