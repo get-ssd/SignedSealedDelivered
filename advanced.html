@@ -535,7 +535,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v79';
+const APP_VERSION = 'ssd-v80';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD]', ...a);
@@ -1585,6 +1585,29 @@ const app = {
     }
     const label = document.getElementById('passkey-label').value.trim() || 'SSD Keyring';
     ui.clear();
+
+    // MK-7 — reaching here with a master-key record present means this is a
+    // credential CHANGE, not a first setup: the rung-3 re-registration route,
+    // where credential_id was never set so the guard above lets us through.
+    // The master key must come out from under the OLD credential BEFORE the new
+    // one is registered. Rewrapping afterwards is not a thing that exists.
+    const oldRung = await keyring._getRung();
+    const isChange = !!(await keyring._getMasterKeyRecord());
+    let carriedMk = null;
+    if (isChange) {
+      ui.display('Confirming your current PIN before changing how this keyring is unlocked…');
+      try {
+        await this._unlock();
+        carriedMk = await keyring.beginCredentialChange();
+      } catch (e) {
+        // Abort — do NOT register over material we cannot carry across (MK-8).
+        ui.display(`<span class="fail">Cannot change credential: ${e.message}</span>
+          <div class="warn" style="margin-top:8px">Nothing was changed. Your existing keys are untouched and still
+          open with the credential you have now.</div>`);
+        return;
+      }
+    }
+
     ui.display('Registering passkey…');
     let rung;
     try {
@@ -1598,6 +1621,18 @@ const app = {
     }
     await keyring.setRung(rung);
     if (rung === 1) {
+      ui.display('<div class="ok">✓ Passkey registered. Deriving new unlock key…</div>');
+      // MK-7 step 2 — the new unlock key only exists after an assertion; PRF
+      // results are not returned by registration. uk_id still matches the record
+      // at this point, so unlock() will not false-alarm on detection.
+      keyring._sessionKey = null;
+      // MK-6 — on a first setup the uk_id must exist BEFORE the unlock that
+      // creates the master-key record, or the record is stamped with an id we
+      // are about to replace and every later unlock reads as an orphan.
+      if (!isChange) await keyring.newUnlockKeyId();
+      await keyring.unlock();
+      if (isChange) await keyring.completeCredentialChange(carriedMk, keyring._sessionKey);
+      carriedMk = null;
       ui.display('<div class="ok">✓ Passkey registered. Creating device key…</div>');
       try {
         const deviceRec = await keyring.createKey('D:Device Key');
@@ -1614,12 +1649,28 @@ const app = {
       const pin = await this._promptPin('Set a 4-digit PIN');
       if (!pin) {
         await db.del('settings', 'credential_id');
-        await db.del('settings', 'keyring_rung');
-        ui.display('<span class="warn">Setup cancelled.</span>');
+        // On an abort mid-change the old credential is still the live one: put
+        // its rung back rather than deleting it. The master key was never
+        // rewrapped, so the old PIN still opens everything.
+        if (isChange) await keyring.setRung(oldRung);
+        else          await db.del('settings', 'keyring_rung');
+        carriedMk = null;
+        ui.display('<span class="warn">Setup cancelled. Nothing was changed.</span>');
         await this.checkPasskeyStatus(); return;
       }
       const salt = crypto.getRandomValues(new Uint8Array(32));
       await db.put('settings', { key: 'pin_salt', value: cryptoOps.b64enc(salt) });
+      // MK-7 steps 2–3 for the PIN rungs: derive the new unlock key from the
+      // salt just written, then rewrap. MK-6 stamps the fresh uk_id inside
+      // completeCredentialChange / newUnlockKeyId.
+      const newUk = await keyring._pinToAesKey(pin);
+      if (isChange) {
+        await keyring.completeCredentialChange(carriedMk, newUk);
+        carriedMk = null;
+      } else {
+        await keyring.newUnlockKeyId();
+        keyring._sessionKey = null;
+      }
       ui.display('<div class="ok">✓ Set up complete.</div>');
     }
     await this.checkPasskeyStatus();
@@ -3128,10 +3179,99 @@ const app = {
     try {
       await keyring.unlock();
     } catch (e) {
+      if (e.orphaned) { this._showOrphanRecovery(e); throw e; }
       if (!e.pinRequired) throw e;
       const entered = await this._promptPin('Enter your PIN');
       if (!entered) throw new Error('Cancelled.');
-      await keyring.unlock(entered);
+      try {
+        await keyring.unlock(entered);
+      } catch (e2) {
+        if (e2.orphaned) this._showOrphanRecovery(e2);
+        throw e2;
+      }
+    }
+    this._reportMigrationOrphans();
+  },
+
+  // SPEC-KEYRING §8 step 4 — records that would not unwrap were already
+  // orphaned; migration left them alone rather than failing. Say so once,
+  // rather than letting the holder discover it at signing time.
+  _reportMigrationOrphans() {
+    const rep = keyring._migrationReport;
+    if (!rep || !rep.orphaned.length || this._migrationNoticeShown) return;
+    this._migrationNoticeShown = true;
+    const names = rep.orphaned
+      .map(o => o.store === 'my_keys' ? `${o.name} (${o.hash8})` : `encryption key ${o.pub.slice(0, 12)}…`)
+      .join(', ');
+    ui.display(`<div class="ok">✓ Keyring storage upgraded — ${rep.migrated.length} key${rep.migrated.length === 1 ? '' : 's'} carried across.</div>
+      <div class="warn" style="margin-top:8px">${rep.orphaned.length} stored item${rep.orphaned.length === 1 ? ' was' : 's were'}
+      locked with an older credential and could not be carried: ${names}. ${rep.orphaned.length === 1 ? 'It has' : 'They have'}
+      been left in place untouched, but cannot be opened. Everything else is unaffected.</div>`);
+  },
+
+  // SPEC-KEYRING §6.4 — the routing D18(b) identified as missing. A detected
+  // orphan is told what happened and given somewhere to go, rather than left
+  // staring at a failure banner.
+  _showOrphanRecovery(err) {
+    ui.display(`<div class="fail">✗ ${err.message}</div>
+      <div class="warn" style="margin-top:10px">
+        The signing keys and the encryption key stored on this device were locked with a
+        credential this device no longer has. They cannot be opened, here or anywhere.
+      </div>
+      <div style="margin-top:12px;padding:12px;border-radius:var(--radius);background:var(--surface-2)">
+        <div style="font-size:14px;margin-bottom:8px">If your identity exists on another device</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:10px">
+          Use “Transfer key” from that device to bring your O: identity here. Do that first —
+          starting again below cannot be undone.
+        </div>
+        <div style="font-size:14px;margin:14px 0 8px">Otherwise</div>
+        <button class="btn-danger" onclick="app.acceptKeyringLoss()">Accept the loss and start a new keyring…</button>
+      </div>`);
+  },
+
+  // Accept-loss path for a detected orphan. Scoped to keyring material only —
+  // contacts, documents and artifacts are not touched. This is D18(b)'s accepted
+  // loss made operative: it destroys records that are ALREADY unopenable, so it
+  // costs no capability that still existed.
+  async acceptKeyringLoss() {
+    const keys = await db.getAll('my_keys');
+    const hasIdentity = keys.some(k => k.name.startsWith('O:'));
+    const msg =
+      'Start a new keyring and give up the unreadable one?\n\n' +
+      `This deletes ${keys.length} stored signing key${keys.length === 1 ? '' : 's'} and the encryption key. ` +
+      'They are already unreadable — this does not lose anything that still worked.\n\n' +
+      (hasIdentity
+        ? 'Your old O: identity CANNOT BE REVOKED. Revoking a key requires signing with it, and it cannot be ' +
+          'opened. Anyone who already holds your key card will keep seeing that identity as valid, permanently. ' +
+          'If it exists on another device, transfer it here instead of doing this.\n\n'
+        : '') +
+      'Documents you have already opened, contacts and downloaded .ssd files are not affected.\n\n' +
+      'This cannot be undone. Continue?';
+    if (!confirm(msg)) return;
+
+    ui.clear();
+    ui.display('Starting a new keyring…');
+    try {
+      for (const k of keys) await db.del('my_keys', k.id);
+      for (const e of await db.getAll('encryption_keys')) await db.del('encryption_keys', e.pub);
+      await db.del('settings', 'my_encryption_key_pub');
+      // Discarding the record is what makes the install usable again: while it
+      // is present and unopenable, nothing can be minted under it either.
+      await db.del('settings', keyring.MK_RECORD);
+      await db.del('settings', 'mk_migration_report');
+      keyring._sessionKey = null;
+      keyring._pinCanary  = null;
+      // A fresh master key is created by the unlock below, under the credential
+      // this device actually has, stamped with the current uk_id.
+      await this._unlock();
+      await keyring.ensureEncryptionKey();
+      await this.checkEncryptionKeyStatus();
+      await this.loadKeyring();
+      ui.display(`<div class="ok">✓ New keyring started.</div>
+        <div class="muted" style="margin-top:8px">Create a signing key in Keys, or transfer your identity
+        from another device if you still have one.</div>`);
+    } catch (e) {
+      ui.display(`<span class="fail">Could not start a new keyring: ${e.message}</span>`);
     }
   },
 };

@@ -1,7 +1,7 @@
 """
 test-rung3-smoke.py — rung-3 (PIN-only) smoke test for the SSD PWA.
 
-Covers: rung-3 setup (no WebAuthn), PIN-derived KEK via PBKDF2, O: + D: mint,
+Covers: rung-3 setup (no WebAuthn), PIN-derived unlock key via PBKDF2, O: + D: mint,
         sign round-trip, and re-unlock with PIN after lock.
 
 No virtual authenticator is injected. The rung is set directly to 3 (simulating
@@ -94,7 +94,7 @@ async def main():
     browser_name = "Brave" if exe and "Brave" in exe else \
                    "Chrome" if exe else "Playwright bundled Chromium"
     print(f"\nSSD rung-3 PIN-only smoke test — {browser_name}\n")
-    print("1. Rung-3 setup (no WebAuthn, PIN-derived KEK)")
+    print("1. Rung-3 setup (no WebAuthn, PIN-derived unlock key)")
     print("2. Keyring unlock via PBKDF2 PIN")
     print("3. O: + D: key mint")
     print("4. Sign round-trip")
