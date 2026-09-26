@@ -29,6 +29,7 @@ function ok(label, cond) {
 const keyring   = fs.readFileSync(path.join(ROOT, 'keyring.js'), 'utf8');
 const advanced  = fs.readFileSync(path.join(ROOT, 'advanced.html'), 'utf8');
 const indexHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+const exchange = fs.readFileSync(path.join(ROOT, 'basic-exchange.js'), 'utf8');
 const tickSW    = fs.readFileSync(path.join(TICK, 'background', 'service-worker.js'), 'utf8');
 const tickBG    = fs.readFileSync(path.join(TICK, 'background', 'background.js'), 'utf8');
 const tickSWDist = fs.readFileSync(path.join(TICK, 'dist', 'chrome', 'background', 'service-worker.js'), 'utf8');
@@ -104,7 +105,7 @@ ok('advanced: transcodes enc key back',        advanced.includes('cryptoOps.b64e
 
 ok('index: guard reads signing_public_key',    indexHtml.includes("card.signing_public_key || !card.hash8"));
 ok('index: hash8 from signing_public_key',     indexHtml.includes('cryptoOps.hash8(card.signing_public_key)'));
-ok('index: DB stores signing_public_key',      indexHtml.includes('public_key_b64: card.signing_public_key'));
+ok('index: shared contact writer stores signing_public_key', indexHtml.includes('basicExchange.saveContact(card,') && exchange.includes('public_key_b64: card.signing_public_key'));
 
 // ─── 6. Tick background files ────────────────────────────────────────────────
 

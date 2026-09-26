@@ -246,8 +246,9 @@
         <div class="step-num">1</div>
         <div class="step-body">
           <div class="step-title">Register passkey</div>
-          <div class="step-desc">Your passkey protects your private keys. If your device doesn't support passkeys, you'll set a PIN instead.</div>
+          <div class="step-desc">Your device verifies you before you can use your signing identity. Some devices also need an app PIN.</div>
           <button class="btn-primary" id="wz-btn-1" onclick="app.registerPasskey()">Set up passkey</button>
+          <button class="btn-secondary" id="wz-btn-pin" onclick="app.setupPinOnly()" style="display:none;margin-top:8px">Testing only: set up with a PIN</button>
         </div>
       </div>
 
@@ -256,6 +257,8 @@
         <div class="step-body">
           <div class="step-title">Create your identity</div>
           <div class="step-desc">Generates your owner (O:) and device (D:) signing keys.</div>
+          <label for="wz-identity-name">Your name</label>
+          <input id="wz-identity-name" type="text" autocomplete="name" placeholder="My Identity" maxlength="100">
           <button class="btn-primary" id="wz-btn-2" onclick="app.ensureIdentity()" disabled>Create identity</button>
         </div>
       </div>
@@ -263,9 +266,9 @@
       <div id="wz-3" class="step pending">
         <div class="step-num">3</div>
         <div class="step-body">
-          <div class="step-title">Share your beacon</div>
-          <div class="step-desc">Paste your SSDKEY beacon into your social media bio so others can find your key.</div>
-          <button class="btn-primary" id="wz-btn-3" onclick="app.shareBeacon()" disabled>Copy beacon</button>
+          <div class="step-title">Share your signing key</div>
+          <div class="step-desc">Paste your signing code into your social media bio so others can verify your signatures. Your key card QR also lets them seal documents to you.</div>
+          <button class="btn-primary" id="wz-btn-3" onclick="app.shareBeacon()" disabled>Copy signing code</button>
         </div>
       </div>
 
@@ -295,7 +298,7 @@
       </div>
     </div>
     <div style="margin-top:20px">
-      <button class="btn-secondary btn-block" onclick="app.shareBeacon()">Copy SSDKEY beacon</button>
+      <button class="btn-secondary btn-block" onclick="app.shareBeacon()">Copy signing code</button>
     </div>
   </div>
 </div>
@@ -340,6 +343,8 @@
       <button class="btn-primary" style="min-height:38px;font-size:14px;padding:8px 16px" onclick="app.newDoc()">+ New</button>
     </div>
     <div id="docs-artifact-list"></div>
+    <button class="btn-secondary btn-block" style="margin-top:14px" onclick="document.getElementById('docs-open-file').click()">Open received .ssd</button>
+    <input id="docs-open-file" type="file" accept=".ssd,application/octet-stream" style="display:none" onchange="if(this.files[0])app.receiveFile(this.files[0])">
   </div>
 
   <!-- Compose view -->
@@ -363,17 +368,32 @@
     </div>
     <p class="muted" style="margin-bottom:8px">This is exactly what will be signed:</p>
     <div class="preview-box" id="docs-preview-text"></div>
-    <label for="docs-seal-self-check" class="seal-toggle" style="margin-top:0">
-      <input type="checkbox" id="docs-seal-self-check">
-      <div>
-        <div class="seal-toggle-label">Seal for myself</div>
-        <div class="seal-toggle-hint">Encrypts the document — only you can open it</div>
-      </div>
-    </label>
+    <h3>You are signing as</h3>
+    <p id="docs-signing-as"></p>
+    <h3>Who can open it?</h3>
+    <label class="seal-toggle"><input type="radio" name="docs-access" value="sealed" checked onchange="app.updateRecipientState()">Only people I choose (sealed)</label>
+    <label class="seal-toggle"><input type="radio" name="docs-access" value="public" onchange="app.updateRecipientState()">Anyone who has the file (not sealed)</label>
+    <div id="docs-recipients">
+      <input id="docs-recipient-filter" type="search" placeholder="Find a person" aria-label="Find a recipient" style="display:none" oninput="app.filterRecipients(this.value)">
+      <div id="docs-recipient-list" style="max-height:45vh;overflow-y:auto"></div>
+    </div>
+    <p id="docs-recipient-note" class="muted" aria-live="polite"></p>
     <div class="btn-row">
-      <button class="btn-primary" onclick="app.signDoc()">Sign &amp; Save</button>
+      <button class="btn-primary" id="docs-sign-btn" onclick="app.signDoc()">Sign &amp; Save</button>
       <button class="btn-secondary" onclick="app.loadDocs()">Cancel</button>
     </div>
+  </div>
+
+  <div id="docs-deliver" style="display:none">
+    <h2>Ready to deliver</h2>
+    <p id="docs-deliver-summary"></p>
+    <p id="docs-deliver-filename" class="muted"></p>
+    <div class="btn-row">
+      <button class="btn-primary" id="docs-share-btn" onclick="app.shareLastDoc()">Share</button>
+      <button class="btn-secondary" onclick="app.downloadLastDoc()">Download</button>
+    </div>
+    <p id="docs-share-unavailable" class="muted">Sharing isn't available in this browser — use Download.</p>
+    <button class="btn-secondary btn-block" onclick="app.loadDocs()">Done</button>
   </div>
 
   <!-- View artifact -->
@@ -382,8 +402,9 @@
       <button class="btn-secondary" style="min-height:36px;font-size:14px;padding:8px 14px" onclick="app.loadDocs()">← Back</button>
       <div id="docs-view-meta" style="display:flex;gap:8px;align-items:center"></div>
     </div>
+    <div id="docs-verification" role="status" aria-live="polite"></div>
     <div class="preview-box" id="docs-view-content" style="max-height:none"></div>
-    <button class="btn-secondary btn-block" onclick="app.downloadArtifact()" style="margin-top:14px">Download .ssd</button>
+    <button id="docs-view-download" class="btn-secondary btn-block" onclick="app.downloadArtifact()" style="margin-top:14px">Download .ssd</button>
   </div>
 </div>
 
@@ -392,13 +413,13 @@
   <h2>Keys</h2>
 
   <!-- Beacon share -->
-  <h3>Your beacon</h3>
+  <h3>Your key card</h3>
   <div id="keys-beacon-list"></div>
 
   <!-- Import -->
   <h3>Import a key</h3>
   <div class="import-area">
-    <label style="margin-top:0">Paste an SSDKEY beacon or key card JSON</label>
+    <label style="margin-top:0">Paste a signing code or key card</label>
     <textarea id="keys-import-text" rows="3" placeholder="[SSDKEY:…] or {…}" style="font-size:13px;font-family:var(--mono)"></textarea>
     <button class="btn-primary btn-block" onclick="app.importKey()" style="margin-top:10px">Import key</button>
     <button class="btn-secondary btn-block" onclick="app.startBeaconScan()" style="margin-top:8px">Scan QR code</button>
@@ -487,7 +508,7 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
-const APP_VERSION = 'ssd-v80';
+const APP_VERSION = 'ssd-v81';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD-basic]', ...a);
@@ -497,6 +518,7 @@ const log = (...a) => console.log('[SSD-basic]', ...a);
 <script src="passkey.js"></script>
 <script src="keyring.js"></script>
 <script src="signer-engines.js"></script>
+<script src="basic-exchange.js"></script>
 <script src="opfs-identicon.js"></script>
 <script>
 'use strict';
@@ -512,11 +534,24 @@ const app = {
   _viewArtifactId: null,
 
   async init() {
+    const url = new URL(location.href);
+    const received = url.searchParams.get('ssd');
+    if (url.searchParams.has('ssd')) {
+      url.searchParams.delete('ssd');
+      history.replaceState({}, document.title, url.pathname + url.search + url.hash);
+    }
+    document.getElementById('wz-btn-pin').style.display = MOCK_MODE ? '' : 'none';
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' }).catch(console.warn);
     }
     document.getElementById('app-version').textContent = APP_VERSION;
     await this.refreshHome();
+    if (received) {
+      try {
+        if (!received || !/^[A-Za-z0-9_-]+$/.test(received)) throw new Error('Invalid document URL.');
+        await this.receiveBytes(cryptoOps.b64urldec(received));
+      } catch (e) { this.msg(`<span class="fail">Could not open .ssd from URL: ${this._esc(e.message)}</span>`); }
+    }
   },
 
   async tab(name) {
@@ -577,6 +612,7 @@ const app = {
 
     // Completed steps stay disabled: resuming at step 3 must never re-run 1 or 2.
     document.getElementById('wz-btn-1').disabled = step1done;
+    document.getElementById('wz-btn-pin').disabled = step1done;
     document.getElementById('wz-btn-2').disabled = !step1done || step2done;
     document.getElementById('wz-btn-3').disabled = !step2done;
   },
@@ -586,13 +622,26 @@ const app = {
     identicon.render(seed, document.getElementById('home-identicon'), 64);
     document.getElementById('home-okey-name').textContent = oKey.name.startsWith('O:') ? oKey.name.slice(2) : oKey.name;
     document.getElementById('home-hash8').textContent = oKey.hash8;
-    const statusText = rung === 1 ? '✓ Passkey (PRF)' : rung === 2 ? '✓ Passkey + PIN' : '✓ PIN only';
+    const statusText = rung === 1 ? '✓ Passkey — user+device' : rung === 2 ? '✓ Passkey + PIN — secret+device' : 'Testing fallback: PIN only — secret';
     document.getElementById('home-passkey-status').textContent = statusText;
     document.getElementById('home-passkey-status').className = 'ok';
     const allKeys = await db.getAll('my_keys');
     const dKey = allKeys.find(k => k.name.startsWith('D:') && !k.is_revoked);
     document.getElementById('home-dkey-status').textContent = dKey ? (dKey.name.startsWith('D:') ? dKey.name.slice(2) : dKey.name) : '✗ Missing';
     document.getElementById('home-dkey-status').className = dKey ? '' : 'fail';
+  },
+
+  async setupPinOnly() {
+    if (!MOCK_MODE) return;
+    if (await db.get('settings', 'keyring_rung')) return;
+    this.msg('<p>Your keys are protected by your PIN only. Anyone with access to this browser profile who knows your PIN can sign as you.</p>');
+    const pin = await this._promptForPin('Testing only: set a 4-digit PIN');
+    if (!pin) return;
+    await keyring.setRung(3);
+    await keyring.newUnlockKeyId();
+    await db.put('settings', { key: 'pin_salt', value: cryptoOps.b64enc(crypto.getRandomValues(new Uint8Array(32))) });
+    await keyring.unlock(pin);
+    await this.refreshHome();
   },
 
   async registerPasskey() {
@@ -607,6 +656,10 @@ const app = {
     } catch (e) {
       if (e.name === 'NotAllowedError' || e.name === 'AbortError') {
         this.msg('<span class="fail">Passkey setup cancelled.</span>'); return;
+      }
+      if (!MOCK_MODE) {
+        this.msg('<span class="fail">Passkey setup did not complete. Try again in your browser with a device screen lock configured.</span>');
+        return;
       }
       rung = 3;
     }
@@ -689,22 +742,24 @@ const app = {
     try {
       await this._unlock();
       const allKeys = await db.getAll('my_keys');
+      const identityName = document.getElementById('wz-identity-name').value.trim();
       const dKey = allKeys.find(k => k.name.startsWith('D:') && !k.is_revoked);
       const oKey = allKeys.find(k => k.name.startsWith('O:') && !k.is_revoked);
       if (!dKey) {
         this.msg('Creating device key…');
-        const newD = await keyring.createKey('D:My Device');
+        const newD = await keyring.createKey('D:' + (identityName || 'My Device'));
         const dCard = await keyring.exportKeyCard(newD.id);
         await db.put('my_keys', { ...newD, signed_card: dCard });
       }
       if (!oKey) {
         this.msg('Creating owner identity…');
-        const newO = await keyring.createKey('O:My Identity');
+        const newO = await keyring.createKey('O:' + (identityName || 'My Identity'));
         const oCard = await keyring.exportKeyCard(newO.id);
         await db.put('my_keys', { ...newO, signed_card: oCard });
       }
       this.msg('Setting up encryption key…');
       await keyring.ensureEncryptionKey();
+      if (identityName) await db.put('settings', { key: 'my_device_name', value: identityName });
       this.msg('<span class="ok">✓ Identity ready.</span>');
       await this.refreshHome();
     } catch(e) {
@@ -719,7 +774,7 @@ const app = {
     const token = `[SSDKEY:${oKey.hash8}:${oKey.public_key_b64}]`;
     try {
       await navigator.clipboard.writeText(token);
-      this.msg(`<span class="ok">✓ Beacon copied — paste into your social media bio.</span><div class="token-box" style="margin-top:8px">${this._esc(token)}</div>`);
+      this.msg(`<span class="ok">✓ Signing code copied — paste into your social media bio.</span><div class="token-box" style="margin-top:8px">${this._esc(token)}</div>`);
     } catch {
       this.msg(`<p class="muted" style="margin-bottom:8px">Copy this into your social media bio:</p><div class="token-box">${this._esc(token)}</div>`);
     }
@@ -811,7 +866,7 @@ const app = {
   // ── DOCS ──────────────────────────────────────────────────────────────────
 
   _showDocsView(id) {
-    ['docs-list','docs-compose','docs-preview','docs-view'].forEach(v => {
+    ['docs-list','docs-compose','docs-preview','docs-view','docs-deliver'].forEach(v => {
       document.getElementById(v).style.display = v === id ? '' : 'none';
     });
     this.clearMsg();
@@ -838,10 +893,9 @@ const app = {
   async newDoc() {
     this._sigCtx = null;
     document.getElementById('docs-text').value = '';
-    document.getElementById('docs-seal-self-check').checked = false;
     this._showDocsView('docs-compose');
     const sel = document.getElementById('docs-key-select');
-    const keys = (await db.getAll('my_keys')).filter(k => !k.is_revoked);
+    const keys = (await db.getAll('my_keys')).filter(k => k.name.startsWith('O:') && !k.is_revoked);
     sel.innerHTML = keys.length
       ? keys.map(k => `<option value="${k.id}">${this._esc(k.name)} (${k.hash8})</option>`).join('')
       : '<option value="">— No keys —</option>';
@@ -862,11 +916,55 @@ const app = {
     this._sigCtx = { keyId, canonical, timestamp, render, rec };
     document.getElementById('docs-preview-text').textContent = render;
     this._showDocsView('docs-preview');
+    document.getElementById('docs-signing-as').textContent = `${rec.name} (${rec.hash8})`;
+    document.querySelector('[name="docs-access"][value="sealed"]').checked = true;
+    const self = (await db.getAll('encryption_keys')).find(k => k.is_current);
+    const persons = await db.getAll('contacts');
+    const contactKeys = await db.getAll('contact_keys');
+    this._recipients = [{ id: '__self__', name: 'Me', pub: self?.pub || null, hash8: rec.hash8 }, ...persons.map(p => ({
+      id: p.id, name: p.local_name, pub: p.encryption_key_pub || null,
+      hash8: contactKeys.find(k => k.person_id === p.id)?.hash8 || '',
+    }))];
+    document.getElementById('docs-recipient-list').innerHTML = this._recipients.map((r, i) => `
+      <label class="seal-toggle" style="${r.pub ? '' : 'opacity:.55'}">
+        <input type="checkbox" class="docs-recipient" data-index="${i}" ${i === 0 && r.pub ? 'checked' : ''} ${r.pub ? '' : 'disabled'} onchange="app.updateRecipientState()">
+        <span>${this._esc(r.name)}${r.pub ? '' : '<br><small>No sealing key — scan their key card to add one.</small>'}</span>
+      </label>`).join('');
+    const list = document.getElementById('docs-recipient-list');
+    const filter = document.getElementById('docs-recipient-filter');
+    filter.value = '';
+    filter.style.display = list.scrollHeight > list.clientHeight ? '' : 'none';
+    this.updateRecipientState();
+  },
+
+  filterRecipients(value) {
+    document.querySelectorAll('#docs-recipient-list label').forEach(row => { row.style.display = row.textContent.toLowerCase().includes(value.toLowerCase()) ? '' : 'none'; });
+  },
+
+  selectedRecipients() {
+    return [...document.querySelectorAll('.docs-recipient:checked')].map(cb => this._recipients[Number(cb.dataset.index)]).filter(r => r?.pub);
+  },
+
+  updateRecipientState() {
+    const sealed = document.querySelector('[name="docs-access"]:checked').value === 'sealed';
+    const recipients = this.selectedRecipients();
+    document.getElementById('docs-recipients').style.display = sealed ? '' : 'none';
+    const button = document.getElementById('docs-sign-btn');
+    button.disabled = !!this._signing || (sealed && !recipients.length);
+    button.textContent = sealed ? `Sign and seal for ${recipients.length}` : 'Sign (not sealed)';
+    document.getElementById('docs-recipient-note').textContent = !sealed ? '' : !recipients.length
+      ? "Choose at least one person, or choose 'Anyone who has the file'."
+      : recipients.some(r => r.id === '__self__') ? '' : "You won't be able to open this document again on this device.";
   },
 
   async signDoc() {
     if (!this._sigCtx) { this._showDocsView('docs-list'); return; }
-    const sealForSelf = document.getElementById('docs-seal-self-check').checked;
+    if (this._signing) return;
+    const encrypted = document.querySelector('[name="docs-access"]:checked').value === 'sealed';
+    const recipients = encrypted ? this.selectedRecipients() : [];
+    if (encrypted && !recipients.length) { this.updateRecipientState(); return; }
+    this._signing = true;
+    this.updateRecipientState();
     const { keyId, canonical, timestamp, render, rec } = this._sigCtx;
     this.msg('Signing…');
     try {
@@ -888,26 +986,14 @@ const app = {
       const signatureObj  = {
         algorithm: 'Ed25519', signer_hash8: rec.hash8, capacity: ['ssd:author'],
         signed_at: timestamp, manifest_hash: manifestHash, signature,
+        signing_public_key: rec.public_key_b64,
       };
       const innerZip = await artifact.pack(content, 'ssd-render-1.0', manifestObj, signatureObj);
 
       let outputBytes = innerZip;
-      let encrypted = false;
-
-      if (sealForSelf) {
+      if (encrypted) {
         this.msg('Sealing…');
-        const myEncPub = await db.get('settings', 'my_encryption_key_pub');
-        if (!myEncPub) throw new Error('No encryption key — complete Home identity setup first.');
-        const outerMeta = JSON.stringify({ ssd: 'sealed-enc-v1', signed_at: timestamp, signer_hash8: rec.hash8, manifest_hash: manifestHash });
-        const outerSig  = await cryptoOps.sign(privateKey, enc.encode(outerMeta));
-        const dekBytes  = window.crypto.getRandomValues(new Uint8Array(32));
-        const dekKey    = await cryptoOps.importAESKey(dekBytes);
-        const { iv_b64: dataIv, ct_b64: dataCt } = await cryptoOps.encryptBytes(innerZip, dekKey);
-        const recipientPub = await cryptoOps.importX25519PublicKeyB64(myEncPub.value);
-        const slot = { for_key: myEncPub.value, ...await cryptoOps.wrapDEK(dekBytes, recipientPub) };
-        const envelope = { ssd: 'sealed-enc-v1', signed_at: timestamp, signer_hash8: rec.hash8, manifest_hash: manifestHash, outer_sig: outerSig, recipients: [slot], iv: dataIv, ct: dataCt };
-        outputBytes = enc.encode(JSON.stringify(envelope));
-        encrypted = true;
+        outputBytes = await basicExchange.seal(innerZip, recipients, { signed_at: timestamp, signer_hash8: rec.hash8, manifest_hash: manifestHash }, privateKey);
       }
 
       const artifactId = window.crypto.randomUUID();
@@ -918,7 +1004,9 @@ const app = {
         hash8: rec.hash8,
         artifact_hash: 'sha256:' + await cryptoOps.sha256(outputBytes),
         render_spec: 'ssd-render-1.0', created: timestamp,
-        encrypted, encrypted_for: encrypted ? ['__self__'] : [],
+        encrypted, encrypted_for: recipients.map(r => r.id),
+        signed_at: timestamp, seal_state: encrypted ? 'sealed' : 'S1',
+        recipients: recipients.map(r => ({ hash8: r.hash8, name: r.name })),
         opfs_path: opfsPath, manifest_hash: manifestHash,
         summary: canonical.trim().slice(0, 80),
       });
@@ -926,12 +1014,26 @@ const app = {
       this._deliverBytes    = outputBytes;
       this._deliverFilename = `ssd-${rec.hash8}-${Date.now()}.ssd`;
       this._sigCtx = null;
-      await this.loadDocs();
-      this.msg(`<span class="ok">✓ Document ${encrypted ? 'sealed' : 'signed'} and saved.</span>
-        <button class="btn-secondary" style="margin-top:8px;min-height:36px;font-size:13px" onclick="app.downloadLastDoc()">Download .ssd</button>`);
+      this._showDocsView('docs-deliver');
+      document.getElementById('docs-deliver-summary').textContent = `Signed by ${rec.name} (${rec.hash8}). ` + (encrypted ? `Sealed for: ${recipients.map(r => r.name).join(', ')}` : 'Not sealed — anyone with the file can read it.');
+      document.getElementById('docs-deliver-filename').textContent = this._deliverFilename;
+      this._deliverFile = new File([outputBytes], this._deliverFilename, { type: 'application/octet-stream' });
+      let canShare = false;
+      try { canShare = !!navigator.share && !!navigator.canShare?.({ files: [this._deliverFile] }); } catch {}
+      document.getElementById('docs-share-btn').style.display = canShare ? '' : 'none';
+      document.getElementById('docs-share-unavailable').style.display = canShare ? 'none' : '';
     } catch(e) {
-      this.msg(`<span class="fail">Signing failed: ${e.message}</span>`);
+      this.msg(`<span class="fail">Signing failed: ${this._esc(e.message)}</span>`);
+    } finally {
+      this._signing = false;
+      this.updateRecipientState();
     }
+  },
+
+  async shareLastDoc() {
+    if (!this._deliverFile) return;
+    try { await navigator.share({ files: [this._deliverFile] }); }
+    catch (e) { if (e.name !== 'AbortError') this.msg(`<span class="fail">Share failed: ${this._esc(e.message)}</span>`); }
   },
 
   downloadLastDoc() {
@@ -946,38 +1048,61 @@ const app = {
   async openArtifact(id) {
     const a = await db.get('artifacts', id);
     if (!a) return;
-    this._viewArtifactId = id;
-    this._showDocsView('docs-view');
-    document.getElementById('docs-view-meta').innerHTML = `
-      <span class="${a.encrypted ? 'badge badge-primary' : 'badge'}">${a.encrypted ? 'Sealed' : 'Signed'}</span>
-      <span class="muted">${a.created ? new Date(a.created).toLocaleDateString() : ''}</span>`;
-    const content = document.getElementById('docs-view-content');
-    content.textContent = 'Loading…';
     try {
-      const rawBytes = await opfsStore.read(a.opfs_path);
-      let render;
-      if (a.encrypted) {
-        const envelope = JSON.parse(new TextDecoder().decode(rawBytes));
-        const myEncKeys = await db.getAll('encryption_keys');
-        const slot = envelope.recipients?.find(r => myEncKeys.some(k => k.pub === r.for_key));
-        if (!slot) { content.textContent = '[Sealed for different recipients — cannot open here]'; return; }
-        this.msg('Decrypting…');
-        await this._unlock();
-        const myPriv   = await keyring.getEncryptionPrivateKey(slot.for_key);
-        const dekBytes = await cryptoOps.unwrapDEK(slot, myPriv);
-        const dekKey   = await cryptoOps.importAESKey(dekBytes);
-        const innerZip = await cryptoOps.decryptBytes(envelope.iv, envelope.ct, dekKey);
-        this.clearMsg();
-        const unpacked = await artifact.unpack(innerZip);
-        render = unpacked.content.render || unpacked.content.source;
-      } else {
-        const unpacked = await artifact.unpack(rawBytes);
-        render = unpacked.content.render || unpacked.content.source;
-      }
-      content.textContent = render || '(empty)';
-    } catch(e) {
-      content.textContent = `Error opening document: ${e.message}`;
-    }
+      await this.receiveBytes(await opfsStore.read(a.opfs_path));
+    } catch(e) { this.msg(`<span class="fail">Error opening document: ${this._esc(e.message)}</span>`); }
+  },
+
+  async receiveFile(file) {
+    try { await this.receiveBytes(new Uint8Array(await file.arrayBuffer())); }
+    catch (e) { this.msg(`<span class="fail">Could not read file: ${this._esc(e.message)}</span>`); }
+    finally { document.getElementById('docs-open-file').value = ''; }
+  },
+
+  async receiveBytes(bytes) {
+    if (this._receiving) return;
+    this._receiving = true;
+    try {
+      await this.tab('docs');
+      this._showDocsView('docs-view');
+      this._viewArtifactId = null;
+      document.getElementById('docs-view-meta').textContent = '';
+      document.getElementById('docs-view-content').replaceChildren();
+      document.getElementById('docs-verification').textContent = 'Opening and verifying…';
+      document.getElementById('docs-view-download').style.display = 'none';
+      const result = await basicExchange.open(bytes, () => this._unlock());
+      this._viewArtifactId = await basicExchange.persistReceived(bytes, result);
+      this.clearMsg();
+      const sealText = {
+        S1: 'Not sealed — anyone with this file can read it.',
+        S2: `Sealed — opened as ${result.seal?.identity}. Sealed for ${result.seal?.count} people.`,
+        S3: 'Sealed — not addressed to anyone on this device.',
+        S4: 'Sealed — addressed to you, but could not be opened.',
+      };
+      const signatureText = {
+        V1: `Signed by ${result.signer_name} (${result.signer_hash8}).`,
+        V2: `Validly signed by key ${result.signer_hash8} — you don't have this person's key card, so the signer is not identified.`,
+        V3: `Signed by a key that has been revoked or quarantined (${result.signer_hash8}).`,
+        V4: 'Content has been changed since it was signed.',
+        V5: 'Signature is not valid.',
+        V6: result.outerOnly ? "Signature can't be checked because the content can't be opened here." : "Signature can't be checked: this file supplies no signing key and the key isn't in your contacts.",
+        V7: "This isn't a readable .ssd file.",
+      };
+      const panel = document.getElementById('docs-verification');
+      panel.replaceChildren();
+      const line = (text, state) => {
+        const p = document.createElement('p'); p.textContent = text; p.dataset.state = state; panel.appendChild(p);
+      };
+      if (result.signature !== 'V7') line(sealText[result.seal.state], result.seal.state);
+      line(signatureText[result.signature], result.signature);
+      if (result.outerOnly && result.signature !== 'V7') line('Signature result covers envelope metadata only. Document content has not been checked.', 'outer-only');
+      if (result.revocation_applied) line('This key has been marked revoked in your keyring.', 'revoked');
+      // Unknown signer names embedded in the signed render remain document
+      // claims. Only the status line above identifies a trusted contact.
+      if (result.signature === 'V2') line('Names in the document below are claims made by its author.', 'unidentified');
+      if (result.unpacked) document.getElementById('docs-view-content').appendChild(result.unpacked.engine.toElement(result.unpacked.content));
+      document.getElementById('docs-view-download').style.display = this._viewArtifactId ? '' : 'none';
+    } finally { this._receiving = false; }
   },
 
   async downloadArtifact() {
@@ -1001,6 +1126,7 @@ const app = {
   async loadKeys() {
     const myKeys      = await db.getAll('my_keys');
     const contactKeys = await db.getAll('contact_keys');
+    const persons = await db.getAll('contacts');
 
     const oKeys = myKeys.filter(k => k.name.startsWith('O:') && !k.is_revoked);
     document.getElementById('keys-beacon-list').innerHTML = oKeys.length
@@ -1009,7 +1135,7 @@ const app = {
             <div class="key-item-name">${this._esc(k.name)}</div>
             <div class="key-item-hash">${k.hash8}</div>
             <div class="btn-row" style="margin-top:0">
-              <button class="btn-secondary" onclick="app.copyBeacon('${k.id}')">Copy beacon</button>
+              <button class="btn-secondary" onclick="app.copyBeacon('${k.id}')">Copy signing code</button>
               <button class="btn-secondary" onclick="app.showKeyCardQR('${k.id}')">Show QR</button>
             </div>
           </div>`).join('')
@@ -1036,6 +1162,7 @@ const app = {
           <div class="key-item">
             <div class="key-item-name">${this._esc(k.name)}</div>
             <div class="key-item-hash">${k.hash8}</div>
+            <span class="badge">${persons.find(p => p.id === k.person_id)?.encryption_key_pub ? 'Can seal to' : 'Verify only'}</span>
           </div>`).join('')
       : '<p class="muted">No imported keys yet.</p>';
   },
@@ -1046,7 +1173,7 @@ const app = {
     const token = `[SSDKEY:${rec.hash8}:${rec.public_key_b64}]`;
     try {
       await navigator.clipboard.writeText(token);
-      this.msg('<span class="ok">✓ Beacon copied.</span>');
+      this.msg('<span class="ok">✓ Signing code copied.</span>');
     } catch {
       this.msg(`<p class="muted" style="margin-bottom:6px">Copy this:</p><div class="token-box">${this._esc(token)}</div>`);
     }
@@ -1054,7 +1181,7 @@ const app = {
 
   async importKey() {
     const text = document.getElementById('keys-import-text').value.trim();
-    if (!text) { this.msg('<span class="warn">Paste a beacon or key card first.</span>'); return; }
+    if (!text) { this.msg('<span class="warn">Paste a signing code or key card first.</span>'); return; }
     this.msg('Importing…');
     try {
       const beaconMatch = text.match(/\[SSDKEY:([A-Za-z0-9_-]{8}):([A-Za-z0-9+/=_-]+)\]/);
@@ -1072,22 +1199,14 @@ const app = {
     const computed = await cryptoOps.hash8(pubB64);
     if (computed !== hash8) throw new Error('Beacon hash8 does not match public key.');
     const existing = (await db.getAll('contact_keys')).find(k => k.hash8 === hash8);
-    if (existing) { this.msg(`<span class="warn">Already have key ${hash8}.</span>`); return; }
     if ((await db.getAll('my_keys')).find(k => k.hash8 === hash8)) {
       this.msg('<span class="warn">This is one of your own keys.</span>'); return;
     }
-    const name = prompt(`Name for this contact's key (${hash8})?`, hash8);
+    const name = existing?.name || prompt(`Name for this contact's key (${hash8})?`, hash8);
     if (!name) { this.clearMsg(); return; }
-    await db.put('contact_keys', {
-      id: window.crypto.randomUUID(), person_id: null, name, hash8,
-      public_key_b64: pubB64, identicon_algorithm: 'ssd-identicon-1.0',
-      self_image_b64: null, received_via: receivedVia,
-      received_at: new Date().toISOString(), expires: null,
-      recheck_interval_days: 90, last_checked: new Date().toISOString(),
-      revocation_hint: null, trust_type: 'peer',
-    });
+    const result = await basicExchange.saveContact({ name, hash8, signing_public_key: pubB64 }, receivedVia, name);
     document.getElementById('keys-import-text').value = '';
-    this.msg(`<span class="ok">✓ Key ${hash8} imported as "${this._esc(name)}".</span>`);
+    this.showImportResult(result, name);
     await this.loadKeys();
   },
 
@@ -1114,32 +1233,31 @@ const app = {
     const fp = await cryptoOps.hash8(card.signing_public_key);
     if (fp !== card.hash8) throw new Error('Fingerprint does not match public key — corrupt key card.');
     const existing = (await db.getAll('contact_keys')).find(k => k.hash8 === card.hash8);
-    if (existing) { this.msg(`<span class="warn">Already have key ${card.hash8}.</span>`); return; }
     if ((await db.getAll('my_keys')).find(k => k.hash8 === card.hash8)) {
       this.msg('<span class="warn">This is one of your own keys.</span>'); return;
     }
-    const name = prompt(`Name for "${card.name}" (${card.hash8})?`, card.name);
+    const name = existing?.name || prompt(`Name for "${card.name}" (${card.hash8})?`, card.name);
     if (!name) { this.clearMsg(); return; }
-    await db.put('contact_keys', {
-      id: window.crypto.randomUUID(), person_id: null, name,
-      hash8: card.hash8, public_key_b64: card.signing_public_key,
-      identicon_algorithm: card.identicon_algorithm || 'ssd-identicon-1.0',
-      self_image_b64: card.self_image || null, received_via: 'key-card',
-      received_at: new Date().toISOString(), expires: card.expires || null,
-      recheck_interval_days: card.recheck_interval_days || 90,
-      last_checked: new Date().toISOString(), revocation_hint: card.revocation_hint || null,
-      trust_type: 'peer',
-    });
+    const result = await basicExchange.saveContact(card, 'key-card', name);
     document.getElementById('keys-import-text').value = '';
-    this.msg(`<span class="ok">✓ Key "${this._esc(name)}" (${card.hash8}) imported.</span>`);
+    this.showImportResult(result, name);
     await this.loadKeys();
+  },
+
+  showImportResult(result, name) {
+    const text = result.state === 'conflict' ? `Sealing key conflict: existing ${result.existing}, incoming ${result.incoming}. The existing key is kept.`
+      : result.state === 'known' ? `Already have ${name}'s key.`
+      : result.state === 'upgraded' ? `${name} can now receive sealed documents.`
+      : result.canSeal ? `Added ${name} — you can verify their signatures and seal documents to them.`
+      : `Added ${name} — you can verify their signatures. This code has no sealing key, so you can't seal documents to them. Scan their key card QR to add it.`;
+    this.msg(`<span class="${result.state === 'conflict' ? 'warn' : 'ok'}">${this._esc(text)}</span>`);
   },
 
   async showBeaconQR(keyId) {
     const rec = await db.get('my_keys', keyId);
     if (!rec) return;
     const beacon = `[SSDKEY:${rec.hash8}:${rec.public_key_b64}]`;
-    await this._renderQRModal('Your SSDKEY beacon', 'Scan this to import your key as a contact on another device.', beacon);
+    await this._renderQRModal('Your signing code', 'Scan this to import your key as a contact on another device.', beacon);
   },
 
   async showKeyCardQR(keyId) {
@@ -1378,6 +1496,7 @@ const app = {
 
   async _handleScanned(data) {
     const trimmed = data.trim();
+    await this.tab('keys');
     if (trimmed.startsWith('{')) {
       this.msg('Importing key card…');
       try {
@@ -1386,16 +1505,16 @@ const app = {
       } catch(e) {
         this.msg(`<span class="fail">Key card import failed: ${e.message}</span>`);
       }
-      await this.tab('keys');
     } else {
       await this._handleScannedBeacon(trimmed);
     }
   },
 
   async _handleScannedBeacon(data) {
+    await this.tab('keys');
     const m = data.match(/[\[(]SSDKEY:([A-Za-z0-9_-]{8}):([A-Za-z0-9+/=_-]+)[\])]/);
     if (!m) {
-      this.msg('<span class="fail">QR does not contain a recognised key (expected key card JSON or SSDKEY beacon).</span>');
+      this.msg('<span class="fail">QR does not contain a recognised key card or signing code.</span>');
       return;
     }
     this.msg('Importing…');
@@ -1404,7 +1523,6 @@ const app = {
     } catch(e) {
       this.msg(`<span class="fail">Import failed: ${e.message}</span>`);
     }
-    await this.tab('keys');
   },
 
   async factoryReset() {

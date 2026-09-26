@@ -1,5 +1,5 @@
 // Must match APP_VERSION in index.html
-const CACHE_NAME = 'ssd-v80';
+const CACHE_NAME = 'ssd-v81';
 const SHELL = [
   './',
   './index.html',
@@ -10,6 +10,7 @@ const SHELL = [
   './passkey.js',
   './keyring.js',
   './signer-engines.js',
+  './basic-exchange.js',
   './opfs-identicon.js',
   './manifest.json',
   './favicon.ico',
@@ -46,10 +47,19 @@ self.addEventListener('fetch', event => {
 
   // Cache-first for shell files
   if (url.origin === self.location.origin) {
+    // The document travels in the navigation URL, not in the HTML response.
+    // Cache/load the shell without retaining artifact bytes in a cache key;
+    // this also lets an installed app open dispatcher URLs while offline.
+    let shellRequest = event.request;
+    if (event.request.mode === 'navigate' && url.searchParams.has('ssd')) {
+      const clean = new URL(url);
+      clean.searchParams.delete('ssd');
+      shellRequest = clean.href;
+    }
     event.respondWith(
-      caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
+      caches.match(shellRequest).then(cached => cached || fetch(shellRequest).then(response => {
         const clone = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        caches.open(CACHE_NAME).then(cache => cache.put(shellRequest, clone));
         return response;
       }))
     );

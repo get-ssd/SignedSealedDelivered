@@ -18,6 +18,7 @@ sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 from pathlib import Path
 from playwright.async_api import async_playwright
+from server_ready import wait_for_server
 
 PWA_DIR = Path(__file__).parent.parent
 PORT    = 8098
@@ -119,7 +120,7 @@ async def main():
         [sys.executable, '-m', 'http.server', str(PORT), '--directory', str(PWA_DIR)],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
-    time.sleep(0.5)
+    wait_for_server(server, PORT)
 
     exe = find_browser()
     browser_name = "Brave" if exe and "Brave" in exe else \

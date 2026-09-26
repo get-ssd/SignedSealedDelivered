@@ -1,5 +1,6 @@
 .claude/
 node_modules/
+__pycache__/
 docs/restart.txt
 *.png.bak
 screen.png
