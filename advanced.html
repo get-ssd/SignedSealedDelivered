@@ -529,18 +529,18 @@
   <span id="mock-status" style="font-size:11px;color:#9b6fd4;margin-left:auto"></span>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"
-        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="vendor/fflate-0.8.2.js"></script>
+<script src="vendor/qrcode-generator-1.4.4.js"></script>
+<script src="vendor/jsqr-1.4.0.js"></script>
 <script>
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v80';
+const APP_VERSION = 'ssd-v85';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD]', ...a);
 </script>
 <script src="db.js"></script>
+<script src="pwa-updates.js"></script>
 <script src="cryptoOps.js"></script>
 <script src="passkey.js"></script>
 <script src="keyring.js"></script>
@@ -688,9 +688,7 @@ const app = {
   _pendingPairing: null,
 
   async init() {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' }).catch(console.warn);
-    }
+    pwaUpdates.start(APP_VERSION);
 
     if (MOCK_MODE) {
       installMockPasskey();
@@ -1614,6 +1612,10 @@ const app = {
       const { prfSupported } = await passkey.register(label);
       rung = prfSupported ? 1 : 2;
     } catch (e) {
+      if (e.code === 'SSD_AUTH_POLICY') {
+        ui.display('<span class="fail">SSD requires a verified, non-syncing device credential. Setup stopped without a PIN fallback.</span>');
+        return;
+      }
       if (e.name === 'NotAllowedError' || e.name === 'AbortError') {
         ui.display('<span class="fail">Passkey setup cancelled.</span>'); return;
       }

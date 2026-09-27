@@ -246,9 +246,9 @@
         <div class="step-num">1</div>
         <div class="step-body">
           <div class="step-title">Register passkey</div>
-          <div class="step-desc">Your device verifies you before you can use your signing identity. Some devices also need an app PIN.</div>
+          <div class="step-desc">Use local device verification. If device-derived key protection is unavailable, you can choose weaker app-PIN protection. No cloud account is part of SSD setup.</div>
           <button class="btn-primary" id="wz-btn-1" onclick="app.registerPasskey()">Set up passkey</button>
-          <button class="btn-secondary" id="wz-btn-pin" onclick="app.setupPinOnly()" style="display:none;margin-top:8px">Testing only: set up with a PIN</button>
+          <button class="btn-secondary" id="wz-btn-pin" onclick="app.setupPinOnly()" style="margin-top:8px">Use PIN only (weaker protection)</button>
         </div>
       </div>
 
@@ -503,12 +503,11 @@
 </nav>
 
 <!-- ── SCRIPTS ───────────────────────────────────────────────────────────── -->
-<script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"
-        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="vendor/fflate-0.8.2.js"></script>
+<script src="vendor/qrcode-generator-1.4.4.js"></script>
+<script src="vendor/jsqr-1.4.0.js"></script>
 <script>
-const APP_VERSION = 'ssd-v81';
+const APP_VERSION = 'ssd-v85';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD-basic]', ...a);
@@ -520,6 +519,7 @@ const log = (...a) => console.log('[SSD-basic]', ...a);
 <script src="signer-engines.js"></script>
 <script src="basic-exchange.js"></script>
 <script src="opfs-identicon.js"></script>
+<script src="pwa-updates.js"></script>
 <script>
 'use strict';
 
@@ -540,10 +540,7 @@ const app = {
       url.searchParams.delete('ssd');
       history.replaceState({}, document.title, url.pathname + url.search + url.hash);
     }
-    document.getElementById('wz-btn-pin').style.display = MOCK_MODE ? '' : 'none';
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' }).catch(console.warn);
-    }
+    pwaUpdates.start(APP_VERSION);
     document.getElementById('app-version').textContent = APP_VERSION;
     await this.refreshHome();
     if (received) {
@@ -622,9 +619,9 @@ const app = {
     identicon.render(seed, document.getElementById('home-identicon'), 64);
     document.getElementById('home-okey-name').textContent = oKey.name.startsWith('O:') ? oKey.name.slice(2) : oKey.name;
     document.getElementById('home-hash8').textContent = oKey.hash8;
-    const statusText = rung === 1 ? '✓ Passkey — user+device' : rung === 2 ? '✓ Passkey + PIN — secret+device' : 'Testing fallback: PIN only — secret';
+    const statusText = rung === 1 ? '✓ Passkey — user+device' : rung === 2 ? 'Device verification + app PIN — secret+device (weaker key protection)' : 'PIN only — secret (weakest protection)';
     document.getElementById('home-passkey-status').textContent = statusText;
-    document.getElementById('home-passkey-status').className = 'ok';
+    document.getElementById('home-passkey-status').className = rung === 1 ? 'ok' : 'warn';
     const allKeys = await db.getAll('my_keys');
     const dKey = allKeys.find(k => k.name.startsWith('D:') && !k.is_revoked);
     document.getElementById('home-dkey-status').textContent = dKey ? (dKey.name.startsWith('D:') ? dKey.name.slice(2) : dKey.name) : '✗ Missing';
@@ -632,10 +629,9 @@ const app = {
   },
 
   async setupPinOnly() {
-    if (!MOCK_MODE) return;
     if (await db.get('settings', 'keyring_rung')) return;
-    this.msg('<p>Your keys are protected by your PIN only. Anyone with access to this browser profile who knows your PIN can sign as you.</p>');
-    const pin = await this._promptForPin('Testing only: set a 4-digit PIN');
+    this.msg('<p>Your device screen lock protects access to the device. Within SSD, your keys are protected by your app PIN. Anyone with access to this browser profile who knows your PIN can sign as you. If someone extracts a copy of your keyring, they can attack it by guessing the PIN offline.</p>');
+    const pin = await this._promptForPin('Use weaker protection: set an app PIN');
     if (!pin) return;
     await keyring.setRung(3);
     await keyring.newUnlockKeyId();
@@ -654,6 +650,11 @@ const app = {
       const { prfSupported } = await passkey.register('SSD Keyring');
       rung = prfSupported ? 1 : 2;
     } catch (e) {
+      if (e.code === 'SSD_AUTH_POLICY') {
+        this.msg('<span class="fail"></span>');
+        document.querySelector('#msg .fail').textContent = e.message;
+        return;
+      }
       if (e.name === 'NotAllowedError' || e.name === 'AbortError') {
         this.msg('<span class="fail">Passkey setup cancelled.</span>'); return;
       }
@@ -675,10 +676,10 @@ const app = {
       return;
     }
     const disclosure = rung === 2
-      ? 'Your device supports passkeys but not the strongest key protection. You\'ll set a PIN to protect your keys.'
+      ? 'Your device can verify you but cannot supply the keyring encryption secret. Set an SSD app PIN to protect your keys. Your device screen lock remains the first barrier: if someone extracts your keyring, they can guess the app PIN offline; device verification does not protect the copied data. Cancel to leave setup unconfigured.'
       : 'Your keys are protected by your PIN only. Anyone with access to this browser profile who knows your PIN can sign as you.';
     this.msg(`<div>${disclosure}</div><div class="muted" style="margin-top:8px">Set a 4-digit PIN to continue.</div>`);
-    const pin = await this._promptForPin('Set a 4-digit PIN');
+    const pin = await this._promptForPin('Use weaker protection: set an app PIN');
     if (!pin) {
       await db.del('settings', 'credential_id');
       await db.del('settings', 'keyring_rung');

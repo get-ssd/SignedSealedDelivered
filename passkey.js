@@ -30,7 +30,34 @@ const passkey = {
     });
   },
 
-  async register(label) {
+  _policyError(message) {
+    const error = new Error(message);
+    error.code = 'SSD_AUTH_POLICY';
+    return error;
+  },
+
+  _requireDeviceBound(credential, registration = false) {
+    const data = registration
+      ? credential?.response?.getAuthenticatorData?.()
+      : credential?.response?.authenticatorData;
+    if (!(data instanceof ArrayBuffer) || data.byteLength < 37) {
+      throw this._policyError('The browser did not return the credential properties needed to check device-bound protection.');
+    }
+    const flags = new Uint8Array(data)[32];
+    if ((flags & 0x05) !== 0x05) {
+      throw this._policyError('Local user verification did not complete. SSD has not accepted this credential.');
+    }
+    // residentKey is only a preference. Enforce the returned BE/BS flags too:
+    // a platform authenticator can otherwise supply a cloud-syncable credential.
+    if (flags & 0x18) {
+      throw this._policyError('SSD requires a device-bound credential. A backup-eligible or synced credential was returned and has not been accepted.');
+    }
+    if (registration && credential.authenticatorAttachment !== 'platform') {
+      throw this._policyError('SSD requires this device\'s local authenticator.');
+    }
+  },
+
+  async register(label, { requirePrf = false } = {}) {
     const challenge = window.crypto.getRandomValues(new Uint8Array(32));
     const userId = window.crypto.getRandomValues(new Uint8Array(16));
     const rpId = window.location.hostname || 'localhost';
@@ -48,15 +75,21 @@ const passkey = {
         authenticatorSelection: {
           authenticatorAttachment: 'platform',
           userVerification: 'required',
-          residentKey: 'required',
+          // SSD retains the credential ID and supplies allowCredentials. It
+          // does not need discoverable/account-synced passkey storage.
+          residentKey: 'discouraged',
         },
         extensions: { prf: {} },
       },
       signal,
     }));
 
+    this._requireDeviceBound(cred, true);
     const ext = cred.getClientExtensionResults();
     const prfSupported = !!(ext.prf && ext.prf.enabled);
+    if (requirePrf && !prfSupported) {
+      throw this._policyError('Local device verification works, but this authenticator does not provide the PRF secret SSD needs to protect your keys without an app PIN. Setup has stopped; no SSD identity or PIN fallback was created.');
+    }
 
     const credIdB64 = cryptoOps.b64enc(cred.rawId);
     await db.put('settings', { key: 'credential_id', value: credIdB64 });
@@ -87,6 +120,7 @@ const passkey = {
       signal,
     }));
 
+    this._requireDeviceBound(assertion);
     const ext = assertion.getClientExtensionResults();
     const prfOutput = ext.prf?.results?.first;
 
@@ -118,7 +152,7 @@ const passkey = {
     const challenge = window.crypto.getRandomValues(new Uint8Array(32));
     const rpId = window.location.hostname || 'localhost';
 
-    await this._withTimeout(signal => navigator.credentials.get({
+    const assertion = await this._withTimeout(signal => navigator.credentials.get({
       publicKey: {
         challenge,
         rpId,
@@ -128,6 +162,7 @@ const passkey = {
       signal,
     }));
 
+    this._requireDeviceBound(assertion);
     return cryptoOps.sign(privateKey, dataBytes);
   },
 };

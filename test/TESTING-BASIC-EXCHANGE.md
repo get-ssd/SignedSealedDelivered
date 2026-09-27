@@ -14,6 +14,7 @@ py -3 test/test-rung3-smoke.py
 node test/test-key-card-v06.js
 node test/test-opfs-identicon-extract.js
 node test/test-ssd-param.js
+node test/test-passkey-policy.js
 ```
 
 The new test uses Chrome, Playwright, real WebCrypto and separate fresh browser
@@ -30,11 +31,48 @@ the UI, including the contact-name dialog.
 
 ## Authentication direction
 
-Human correction on 2026-09-26: PIN-only is a testing fallback, not the intended
-demo or normal onboarding route. The explicit PIN-only button is available only
-under `?mock`. Normal passkey errors leave onboarding unconfigured. Passkeys
-without PRF can still use the existing passkey-plus-PIN rung; this retains the
-device authentication gate. The Home status names the actual protection rung.
+Human clarification on 2026-09-27: PIN protection is a normal supported fallback,
+not a demo-only exception. It is accepted for these tablets. No Google account
+or credential sync is acceptable. The two governing rules are: you sign what you
+see, and nothing leaves the device unless you choose to send it.
+
+In ssd-v83, registration requests a non-discoverable platform credential with
+required user verification. Returned user-presence/verification and backup flags
+are checked before persistence and on subsequent assertions. Backup-eligible
+credentials are rejected, not merely credentials already backed up. Normal Basic
+setup offers device verification plus app-PIN protection when PRF is absent.
+Cancelling the PIN choice leaves setup unconfigured. A separate explicit PIN-only
+choice is available in normal mode too. Neither path needs a demo flag. An
+authentication-policy rejection does not automatically select PIN-only.
+
+Android's screen lock is the first barrier on a stolen locked tablet. The offline
+PIN risk requires obtaining SSD's stored keyring first. SSD's PIN-derived wrapping
+key then protects the master key, which protects the signing/encryption keys;
+this is browser storage, not a hardware-keystore retry-limited PIN operation.
+Keep this prerequisite explicit when describing the risk.
+
+This does not make Android's WebAuthn implementation independent of Google Play
+Services. Nor can WebAuthn prevent every provider from displaying an account
+prompt: `residentKey: 'discouraged'` is a preference, backed by returned-property
+validation, not a provider-selection or network-isolation API.
+
+### Actual local-authenticator results (2026-09-26/27)
+
+The original Alice registration invoked Google sign-in and was rejected by the
+operator. A separate diagnostic on SERIAL-1 then used `residentKey: 'discouraged'`.
+Registration and a subsequent assertion completed through local device
+verification. Both returned UP=true, UV=true, BE=false, BS=false. Registration
+returned `authenticatorAttachment: 'platform'`, `credProps.rk=false`, and
+`prf.enabled=false`; the assertion returned no PRF output. No Google login or
+app PIN was used. This proves local authentication, **not** PIN-free keyring
+encryption. Bob (SERIAL-2) and Carol (SERIAL-3) subsequently completed both
+registration and assertion with identical results: local verification succeeds,
+non-syncing credentials, no PRF output. The human entered device PINs. No further
+screenshots were taken after the human instructed text-only diagnostics.
+These diagnostics are not a passing full SSD exchange demo.
+Each localhost diagnostic credential was not attached to an SSD
+identity; its ID lived only in the diagnostic tab. Do not claim it was deleted
+from the platform.
 
 `?mock` creates a fresh test database on each load. Do not use that mode for a
 demo identity expected to survive a reload. No data migration was added.
@@ -55,14 +93,17 @@ created during these probes.
 
 1. Serve the repository on localhost and use ADB reverse for the same port on
    each tablet. The current development check uses `http://localhost:8105/`.
-2. In normal mode, register a passkey on each tablet, completing its native
-   authentication prompts. Enter Alice, Bob and Carol respectively in **Your
+2. In normal mode, use local device registration plus an app PIN, or explicitly
+   choose PIN-only. Record the actual protection rung. No account sign-in.
+   Enter Alice, Bob and Carol respectively in **Your
    name**, create each identity, and complete the wizard. Record the actual rung.
 3. In Keys, show the key card QR. Each persona scans/imports the other two cards;
    verify **Can seal to**. Paste may be used for a separate automated-data check,
    but record it as paste rather than claiming a camera pass.
 4. Alice composes an agreement, reviews it, keeps Me selected, adds Bob and
-   Carol, and signs once using the device prompt. Verify the delivery summary.
+   Carol, checks the complete preview, and signs once using the configured
+   confirmation method. Verify the delivery summary. Signing must not send:
+   Share or Download remains a separate explicit action.
 5. Try Share and record the target and resulting destination path. Also test
    Download. Record any cancelled share separately from a successful transfer.
 6. Bob and Carol use **Docs → Open received .ssd** and each see S2, their own

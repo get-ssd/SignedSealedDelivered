@@ -1,7 +1,7 @@
 """Fresh-browser exchange, crypto, persistence and authentication-policy tests.
 
 Run: py -3 test/test-basic-exchange.py
-PIN-only is used here in ?mock. Device demos require real passkey verification.
+PIN-only fixtures use ?mock; normal onboarding also supports explicit PIN fallback.
 """
 import asyncio
 import base64
@@ -137,16 +137,58 @@ async def main():
         wait_for_server(server, PORT)
         async with async_playwright() as p:
             browser = await p.chromium.launch(executable_path=CHROME)
-            # Normal product onboarding must not expose the testing escape.
+            # PIN protection is a normal explicit choice, not a demo exception.
             normal = await browser.new_page()
             await normal.goto(URL)
             await normal.locator('#home-wizard').wait_for(state='visible')
-            check('normal onboarding hides PIN-only test option', not await normal.locator('#wz-btn-pin').is_visible())
+            check('normal onboarding exposes explicit weaker PIN option', await normal.locator('#wz-btn-pin').is_visible())
             await normal.evaluate("() => {passkey.register=async()=>{throw new Error('Unavailable')}}")
             await normal.click('#wz-btn-1')
             await normal.wait_for_function("document.getElementById('msg').textContent.includes('did not complete')")
             check('normal passkey error does not create PIN identity', await normal.evaluate("async()=>!(await db.get('settings','keyring_rung'))"))
+            await normal.click('#wz-btn-pin')
+            await expect(normal.locator('#_pin-overlay-input')).to_be_visible()
+            check('normal PIN-only choice discloses offline guessing', 'guessing the PIN offline' in await normal.locator('#msg').inner_text())
+            await pin(normal)
+            await normal.wait_for_function("!document.getElementById('wz-btn-2').disabled")
+            check('normal explicit PIN setup creates rung 3 without a credential', await normal.evaluate("async()=>(await db.get('settings','keyring_rung')).value===3 && !(await db.get('settings','credential_id'))"))
             await normal.close()
+
+            # Real WebAuthn responses must not admit cloud-syncable credentials
+            # or misrepresent non-PRF PIN protection in normal onboarding.
+            for label, has_prf, backup_eligible, expected in [
+                ('local non-PRF', False, False, None),
+                ('syncable PRF', True, True, 'backup-eligible'),
+            ]:
+                rejected_context = await browser.new_context(service_workers='block')
+                rejected = await rejected_context.new_page()
+                auth = await rejected_context.new_cdp_session(rejected)
+                await auth.send('WebAuthn.enable')
+                await auth.send('WebAuthn.addVirtualAuthenticator', {'options': {
+                    'protocol': 'ctap2', 'ctap2Version': 'ctap2_1', 'transport': 'internal',
+                    'hasResidentKey': True, 'hasUserVerification': True, 'isUserVerified': True,
+                    'automaticPresenceSimulation': True, 'hasPrf': has_prf,
+                    'defaultBackupEligibility': backup_eligible,
+                }})
+                await rejected.goto(URL)
+                await rejected.click('#wz-btn-1')
+                if not has_prf:
+                    await expect(rejected.locator('#_pin-overlay-input')).to_be_visible()
+                    check('normal non-PRF choice discloses offline attack', 'device verification does not protect the copied data' in await rejected.locator('#msg').inner_text())
+                    await rejected.click('#_pin-overlay-cancel')
+                    await expect(rejected.locator('#msg')).to_contain_text('Setup cancelled')
+                    check('cancelling non-PRF PIN choice leaves setup unconfigured', await rejected.evaluate("async()=>!(await db.get('settings','credential_id')) && !(await db.get('settings','keyring_rung'))"))
+                    await rejected.click('#wz-btn-1')
+                    await expect(rejected.locator('#_pin-overlay-input')).to_be_visible()
+                    await pin(rejected)
+                    await rejected.wait_for_function("!document.getElementById('wz-btn-2').disabled")
+                    check('normal non-PRF setup retains credential and uses rung 2', await rejected.evaluate("async()=>(await db.get('settings','keyring_rung')).value===2 && !!(await db.get('settings','credential_id'))"))
+                    await rejected_context.close()
+                    continue
+                await expect(rejected.locator('#msg .fail')).to_contain_text(expected)
+                check(label + ' leaves normal setup unconfigured', await rejected.evaluate("async()=>!(await db.get('settings','credential_id')) && !(await db.get('settings','keyring_rung'))"))
+                check(label + ' does not open a PIN fallback', await rejected.locator('#_pin-overlay-input').count() == 0)
+                await rejected_context.close()
 
             # A normal (non-mock) product session with an actual CDP virtual
             # authenticator exercises credential APIs, PRF, and sign approval.
@@ -206,11 +248,15 @@ async def main():
             }''', cb)
             check('known key skipped; conflicting sealing key kept', states == ['known', 'conflict', True])
 
+            signing_requests = []
+            a.on('request', lambda request: signing_requests.append(request.url))
+            await ac.set_offline(True)
             await a.click('#tab-docs-btn')
             await a.get_by_role('button', name='+ New', exact=True).click()
             await a.locator('#docs-text').fill('Alice, Bob and Carol agree to exchange this document.')
             await a.get_by_role('button', name='Preview & Sign', exact=True).click()
             await a.locator('#docs-preview').wait_for(state='visible')
+            visible_preview = await a.locator('#docs-preview-text').text_content()
             check('review defaults sealed for Me', await a.locator('.docs-recipient:checked').count() == 1)
             await a.locator('.docs-recipient').nth(0).uncheck()
             check('no recipients disables sign', await a.locator('#docs-sign-btn').is_disabled())
@@ -231,6 +277,11 @@ async def main():
             check('outgoing stored before delivery', await a.evaluate("async()=>(await db.getAll('artifacts')).length") == 1)
             check('download MIME unchanged', await a.evaluate('app._deliverFile.type') == 'application/octet-stream')
             sealed = await a.evaluate('Array.from(app._deliverBytes)')
+            check('compose, sign and seal work offline without network requests', signing_requests == [])
+            check('signing does not automatically share', await a.evaluate('typeof window.sharedFile === "undefined"'))
+            signed_render = await a.evaluate("async()=>new TextDecoder().decode(fflate.unzipSync((await basicExchange.unwrap(app._deliverBytes,()=>app._unlock())).zipBytes)['render.txt'])")
+            check('signed document exactly matches the displayed preview', signed_render == visible_preview)
+            await ac.set_offline(False)
             await a.click('#docs-share-btn')
             await a.wait_for_function('window.sharedFile instanceof File')
             check('share sends actual file and cancellation stays on delivery', await a.locator('#docs-deliver').is_visible() and await a.evaluate('sharedFile.size') == len(sealed))
