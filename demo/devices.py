@@ -85,6 +85,11 @@ class Device:
         self.adb("reverse", f"tcp:{self.app_port}", f"tcp:{self.app_port}")
         self.adb("forward", f"tcp:{self.cdp_port}", "localabstract:chrome_devtools_remote")
         self.browser = pw.chromium.connect_over_cdp(f"http://127.0.0.1:{self.cdp_port}", timeout=15000)
+        # CDP attachment can redirect downloads to Playwright's host-side temp
+        # path. Android must use Chrome's own download handling instead.
+        download_session = self.browser.new_browser_cdp_session()
+        download_session.send("Browser.setDownloadBehavior", {"behavior": "default"})
+        download_session.detach()
         ctx = self.browser.contexts[0]
         page = None
         for pg in ctx.pages:
@@ -110,14 +115,28 @@ class Device:
         self.page = page
         return page
 
-    LABEL_JS = """(() => { const put = () => { if (document.getElementById('__persona')) return;
+    LABEL_JS = """(() => { const put = () => {
+      const existing = document.getElementById('__persona');
+      if (existing) existing.remove();
+      if (window.__personaResize) window.__personaResize.disconnect();
       const el = document.createElement('div'); el.id = '__persona';
       el.innerHTML = '<div style="font:bold 40px/1.3 sans-serif;letter-spacing:6px">%s</div>'
         + '<div id="__caption" style="font:22px/1.3 sans-serif;padding:0 12px 8px"></div>';
       el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483647;pointer-events:none;'
-        + 'background:#c00;color:#fff;text-align:center;opacity:.92';
+        + 'background:#c00;color:#fff;text-align:center';
       document.documentElement.appendChild(el);
-      const c = sessionStorage.getItem('__caption'); if (c) el.querySelector('#__caption').textContent = c; };
+      const c = sessionStorage.getItem('__caption'); if (c) el.querySelector('#__caption').textContent = c;
+      const body = document.body;
+      if (body.dataset.demoPaddingTop === undefined)
+        body.dataset.demoPaddingTop = getComputedStyle(body).paddingTop;
+      const reserve = () => {
+        const height = Math.ceil(el.getBoundingClientRect().height);
+        body.style.paddingTop = (parseFloat(body.dataset.demoPaddingTop) + height) + 'px';
+        document.documentElement.style.scrollPaddingTop = (height + 8) + 'px';
+      };
+      window.__personaResize = new ResizeObserver(reserve);
+      window.__personaResize.observe(el);
+      reserve(); };
       document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', put) : put(); })()"""
 
     def caption(self, text, colour="#c00"):
