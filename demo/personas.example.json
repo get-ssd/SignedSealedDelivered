@@ -1,0 +1,21 @@
+{
+  "android_user": 10,
+  "app_port": 8105,
+  "cdp_base_port": 9811,
+  "devices": [
+    {
+      "persona": "Alice",
+      "serial": "SERIAL-1"
+    },
+    {
+      "persona": "Bob",
+      "serial": "SERIAL-2",
+      "pin": "0000"
+    },
+    {
+      "persona": "Carol",
+      "serial": "SERIAL-3",
+      "pin": "0000"
+    }
+  ]
+}

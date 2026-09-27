@@ -95,6 +95,10 @@ py -m http.server 8080
 
 Open `http://localhost:8080`. **WebAuthn requires localhost or HTTPS** — `file://` URLs will not work.
 
+### Three-tablet demo driver (`demo/`)
+
+`demo/ssd_demo.py` drives the basic-exchange demo on three Android tablets over ADB + Chrome DevTools (SPEC-BASIC-EXCHANGE §10): `setup`, `run [--exchange=qr|paste] [--delivery=share|courier]`, `status`, `setdown`. Copy `demo/personas.example.json` to `demo/personas.json` (gitignored) and set the serials; serve the app on 8105 (`py -m http.server 8105`). Every step pauses with a caption on each tablet until `demo/runs/go` is created. The driver only touches the configured Android user (Demo, 10) — it refuses if another user's Chrome is running — and reaches Downloads through that user's media provider, never `/sdcard`. Timelines go to `demo/runs/` (gitignored). `devices.py` is the generic device plumbing; `ssd_demo.py` holds the SSD steps.
+
 ## File Structure
 
 ```
