@@ -61,6 +61,16 @@ To use the same owner key on multiple devices:
 
 A tampered or unsigned transfer is hard-rejected — no import UI is shown.
 
+### Identity to a new device (v86)
+
+Replaces the old self-sealed "Back up / Restore from backup".
+
+1. Set up the new device (B) normally, then scan its key card on the existing device (A).
+2. On A: Keys → **Send identity to a new device…** → pick B. A signs a `keyring-backup` (schema 2) with its O: key and seals it to B and to its own encryption key.
+3. On B: Keys → **Adopt identity from another device…**. B checks the seal, the signature and the key pairs. It refuses if it has any documents, drafts, posts, paired devices, extra keys or imported contacts. Otherwise it replaces its setup O: and sealing key with A's. B keeps its own D: key and passkey/PIN.
+
+The file opens only on B or on a device holding the identity. It is not a recovery backup if all of those are lost.
+
 ### Sealed documents
 
 Documents can be encrypted to one or more recipients by their public encryption key. Tap the **Sealed ▾** badge on any document in the list to see who it was addressed to.

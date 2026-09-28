@@ -149,6 +149,9 @@ const basicExchange = {
       return existing.id;
     }
     if (!['S1', 'S2'].includes(result.seal?.state) || !['V1', 'V2', 'V3'].includes(result.signature)) return null;
+    // An identity file is adopted, not kept as a document (and keeping it would
+    // itself stop this device counting as fresh).
+    if (result.unpacked.content?.type === 'keyring-backup') return null;
     const id = crypto.randomUUID();
     const path = `artifacts/${id}.ssd`;
     await opfsStore.write(path, bytes);
@@ -160,5 +163,168 @@ const basicExchange = {
       summary: String(result.unpacked.content.source || 'Received document').slice(0, 80), ...verification,
     });
     return id;
+  },
+
+  // ── Identity backup to a fresh device (SPEC-IDENTITY-TRANSFER) ─────────────
+  // An ordinary signed, sealed .ssd: a keyring-backup document signed by the
+  // owner's O: key and sealed to the destination device and to the owner's own
+  // encryption key, so either can open it. Shared by both shells.
+
+  _sameKey(a, b) {
+    return !!a && !!b && cryptoOps.b64enc(cryptoOps.b64urldec(a)) === cryptoOps.b64enc(cryptoOps.b64urldec(b));
+  },
+
+  // True when the private key's own public half equals pub (full bytes).
+  async _pairMatches(alg, privB64, pub) {
+    const priv = await crypto.subtle.importKey('pkcs8', cryptoOps.b64dec(privB64), { name: alg }, true, alg === 'Ed25519' ? ['sign'] : ['deriveBits']);
+    const { x } = await crypto.subtle.exportKey('jwk', priv);
+    return this._sameKey(x, pub);
+  },
+
+  // Contacts with a sealing key — the devices an identity can be sent to.
+  async identityDestinations() {
+    const keys = await db.getAll('contact_keys');
+    return (await db.getAll('contacts')).filter(p => p.encryption_key_pub).map(p => ({
+      name: p.local_name, hash8: keys.find(k => k.person_id === p.id)?.hash8 ?? '?', pub: p.encryption_key_pub,
+    }));
+  },
+
+  // Keyring must be unlocked.
+  async buildIdentityBackup(oKey, destPub) {
+    const encPub = (await db.get('settings', 'my_encryption_key_pub'))?.value;
+    if (!encPub) throw new Error('No encryption key on this device.');
+    if (this._sameKey(destPub, encPub)) throw new Error('That is this device’s own sealing key.');
+    const persons = await db.getAll('contacts');
+    const contacts = (await db.getAll('contact_keys')).map(({ id, person_id, ...pub }) => {
+      const p = persons.find(x => x.id === person_id);
+      return { ...pub, person_name: p?.local_name ?? null, person_encryption_key_pub: p?.encryption_key_pub ?? null, person_ref: person_id ?? null };
+    });
+    const content = {
+      type: 'keyring-backup', schema: 2,
+      key_name: oKey.name, hash8: oKey.hash8,
+      signing_pub_b64: oKey.public_key_b64, signing_priv_b64: await keyring.exportKeyB64(oKey.id),
+      encryption_pub_b64: encPub, encryption_priv_b64: await keyring.exportEncryptionPrivateKeyB64(encPub),
+      identicon_algorithm: oKey.identicon_algorithm, self_image_b64: oKey.self_image_b64 ?? null,
+      created: oKey.created, expires: oKey.expires ?? null,
+      recheck_interval_days: oKey.recheck_interval_days ?? 90, revocation_hint: oKey.revocation_hint ?? null,
+      signed_card: oKey.signed_card ?? null,
+      destination_pub_b64: destPub,
+      contacts,
+    };
+    const enc = new TextEncoder();
+    const signed_at = new Date().toISOString();
+    const engine = renderEngines['ssd-key-transfer-1.0'];
+    const files = {};
+    for (const [name, bytes] of Object.entries(engine.hashTargets(content))) files[name] = 'sha256:' + await cryptoOps.sha256(bytes);
+    const manifestObj = { version: '1.0', render_spec: 'ssd-key-transfer-1.0', signed_at, signer_hash8: oKey.hash8, signer_name: oKey.name, files };
+    const manifestBytes = enc.encode(JSON.stringify(manifestObj, null, 2));
+    const manifest_hash = 'sha256:' + await cryptoOps.sha256(manifestBytes);
+    const privateKey = await keyring.getPrivateKey(oKey.id);
+    const signatureObj = { algorithm: 'Ed25519', signer_hash8: oKey.hash8, signing_public_key: oKey.public_key_b64, capacity: ['ssd:author'], signed_at, manifest_hash, signature: await cryptoOps.sign(privateKey, manifestBytes) };
+    const innerZip = await artifact.pack(content, 'ssd-key-transfer-1.0', manifestObj, signatureObj);
+    return this.seal(innerZip, [{ pub: destPub }, { pub: encPub }], { signed_at, signer_hash8: oKey.hash8, manifest_hash }, privateKey);
+  },
+
+  // Opens and fully validates an identity file. Returns its content or throws.
+  async openIdentityBackup(bytes, unlock) {
+    const r = await this.open(bytes, unlock);
+    const seal = r.seal?.state;
+    if (seal !== 'S2') throw new Error(seal === 'S3' ? 'This file was not sealed for this device.'
+      : seal === 'S1' ? 'This file is not sealed — an identity file always is.'
+      : r.signature === 'V7' ? 'This isn’t a readable .ssd file.' : 'This file could not be opened on this device.');
+    if (!['V1', 'V2'].includes(r.signature)) throw new Error(`Signature check failed (${r.signature}) — the file may have been altered.`);
+    const c = r.unpacked.content;
+    if (r.unpacked.manifest.render_spec !== 'ssd-key-transfer-1.0' || c?.type !== 'keyring-backup') throw new Error('This file is not an identity file.');
+    if (c.schema !== 2) throw new Error('This identity backup uses an older format that is no longer supported. Send a new one from the source device.');
+    if (!String(c.key_name).startsWith('O:') || !c.signing_priv_b64 || !c.encryption_priv_b64 || !c.encryption_pub_b64 || !Array.isArray(c.contacts))
+      throw new Error('This identity file is incomplete.');
+    if (!this._sameKey(r.unpacked.signature.signing_public_key, c.signing_pub_b64) || await cryptoOps.hash8(c.signing_pub_b64) !== c.hash8)
+      throw new Error('This identity file is not signed by the identity it contains.');
+    if (!await this._pairMatches('Ed25519', c.signing_priv_b64, c.signing_pub_b64)) throw new Error('The signing key pair in this file does not match.');
+    if (!await this._pairMatches('X25519', c.encryption_priv_b64, c.encryption_pub_b64)) throw new Error('The encryption key pair in this file does not match.');
+    const slots = JSON.parse(new TextDecoder().decode(bytes)).recipients.map(s => s.for_key);
+    if (!slots.some(k => this._sameKey(k, c.encryption_pub_b64)) || !slots.some(k => this._sameKey(k, c.destination_pub_b64)))
+      throw new Error('The file’s recipients do not match its contents.');
+    return c;
+  },
+
+  // Why this device can't take the identity, or null when it has nothing to lose.
+  async identityAdoptionBlocker(c) {
+    const [docs, drafts, posts, paired, myKeys, encKeys, contactKeys, persons] = await Promise.all(
+      ['artifacts', 'drafts', 'social_posts', 'paired_devices', 'my_keys', 'encryption_keys', 'contact_keys', 'contacts'].map(s => db.getAll(s)));
+    if (docs.length) return `this device holds ${docs.length} document(s)`;
+    if (drafts.length) return `this device holds ${drafts.length} draft(s)`;
+    if (posts.length) return `this device holds ${posts.length} social post(s)`;
+    if (paired.length) return 'this device has paired devices';
+    if (myKeys.some(k => this._sameKey(k.public_key_b64, c.signing_pub_b64))) return 'this device already has this identity';
+    const d = myKeys.filter(k => k.name.startsWith('D:')), o = myKeys.filter(k => k.name.startsWith('O:'));
+    if (d.length !== 1 || o.length > 1 || myKeys.length !== d.length + o.length) return 'this device has keys beyond its own device key and setup identity';
+    if (encKeys.length > 1) return 'this device has more than one encryption key';
+    // The only permitted contact is the source owner's own key card.
+    const ownerCards = contactKeys.filter(k => this._sameKey(k.public_key_b64, c.signing_pub_b64));
+    if (contactKeys.length > ownerCards.length) return `this device has ${contactKeys.length - ownerCards.length} imported contact key(s)`;
+    if (persons.some(p => !ownerCards.some(k => k.person_id === p.id))) return 'this device has imported contacts';
+    return null;
+  },
+
+  // Replaces the setup O: and encryption key with the file's. Keyring must be
+  // unlocked. The new keys are added first and the setup ones removed after,
+  // so a failure part-way is rolled back to the setup identity.
+  async adoptIdentityBackup(c) {
+    const blocker = await this.identityAdoptionBlocker(c);
+    if (blocker) throw new Error(`Not adopted: ${blocker}. Nothing was changed.`);
+    const myKeys = await db.getAll('my_keys');
+    const dKey = myKeys.find(k => k.name.startsWith('D:'));
+    const tempO = myKeys.find(k => k.name.startsWith('O:'));
+    const tempEnc = await db.getAll('encryption_keys');
+    const encSetting = await db.get('settings', 'my_encryption_key_pub');
+    const ownerCards = (await db.getAll('contact_keys')).filter(k => this._sameKey(k.public_key_b64, c.signing_pub_b64));
+    const added = { keyId: null, encPub: null, contactKeys: [], persons: [] };
+    try {
+      const rec = await keyring.importKey(c.key_name, c.signing_pub_b64, c.signing_priv_b64);
+      added.keyId = rec.id;
+      await db.put('my_keys', { ...rec, identicon_algorithm: c.identicon_algorithm || rec.identicon_algorithm,
+        self_image_b64: c.self_image_b64 ?? null, created: c.created || rec.created, expires: c.expires ?? null,
+        recheck_interval_days: c.recheck_interval_days ?? 90, revocation_hint: c.revocation_hint ?? null,
+        signed_card: c.signed_card ?? null, received_via: 'identity-transfer' });
+      if (!tempEnc.some(k => k.pub === c.encryption_pub_b64)) added.encPub = c.encryption_pub_b64;
+      await keyring.importEncryptionKey(c.encryption_pub_b64, c.encryption_priv_b64);
+
+      // Public contacts: fresh local ids, source person grouping kept.
+      const personIds = {};
+      const own = [c.signing_pub_b64, dKey.public_key_b64, tempO?.public_key_b64];
+      for (const ct of c.contacts) {
+        if (!ct.hash8 || !ct.public_key_b64 || own.some(k => this._sameKey(k, ct.public_key_b64))) continue;
+        const { person_name, person_encryption_key_pub, person_ref, ...pub } = ct;
+        const ref = person_ref || crypto.randomUUID();
+        if (!personIds[ref]) {
+          personIds[ref] = crypto.randomUUID();
+          await db.put('contacts', { id: personIds[ref], local_name: person_name || ct.name || ct.hash8, notes: null,
+            created: new Date().toISOString(), external_id: null, ...(person_encryption_key_pub ? { encryption_key_pub: person_encryption_key_pub } : {}) });
+          added.persons.push(personIds[ref]);
+        }
+        const id = crypto.randomUUID();
+        await db.put('contact_keys', { ...pub, id, person_id: personIds[ref], imported_via: 'identity-transfer' });
+        added.contactKeys.push(id);
+      }
+    } catch (e) {
+      if (added.keyId) await db.del('my_keys', added.keyId).catch(() => {});
+      if (added.encPub) await db.del('encryption_keys', added.encPub).catch(() => {});
+      if (encSetting) await db.put('settings', encSetting).catch(() => {});
+      for (const id of added.contactKeys) await db.del('contact_keys', id).catch(() => {});
+      for (const id of added.persons) await db.del('contacts', id).catch(() => {});
+      throw new Error(`Adoption failed and was rolled back: ${e.message}`);
+    }
+
+    // Retire the setup identity and anything that now points at it.
+    if (tempO) await db.del('my_keys', tempO.id);
+    for (const k of tempEnc) if (k.pub !== c.encryption_pub_b64) await db.del('encryption_keys', k.pub);
+    for (const k of ownerCards) {
+      await db.del('contact_keys', k.id);
+      if (k.person_id) await db.del('contacts', k.person_id);
+    }
+    // The device key card advertised the retired sealing key.
+    await db.put('my_keys', { ...dKey, signed_card: await keyring.exportKeyCard(dKey.id) });
+    return { name: c.key_name, hash8: c.hash8 };
   },
 };

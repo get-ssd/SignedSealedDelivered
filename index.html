@@ -435,10 +435,10 @@
 
   <!-- Backup / Restore / Share -->
   <div style="margin-top:32px;border-top:1px solid var(--border);padding-top:20px">
-    <h3>Backup &amp; restore</h3>
-    <p class="muted">Back up your identity as an encrypted .ssd file. Restore it on any device using your passkey.</p>
-    <button class="btn-secondary btn-block" onclick="app.backupIdentity()">Back up identity…</button>
-    <button class="btn-secondary btn-block" style="margin-top:8px" onclick="document.getElementById('keys-restore-file').click()">Restore from backup…</button>
+    <h3>Move identity to a new device</h3>
+    <p class="muted">Set up the new device first and scan its key card here. Then send it your identity as a file sealed to that device and to you. On the new device, adopt it before doing anything else. Only a device holding one of those keys can open the file — it cannot recover your identity if they are all lost.</p>
+    <button class="btn-secondary btn-block" onclick="app.backupIdentity()">Send identity to a new device…</button>
+    <button class="btn-secondary btn-block" style="margin-top:8px" onclick="document.getElementById('keys-restore-file').click()">Adopt identity from another device…</button>
     <input id="keys-restore-file" type="file" accept=".ssd" style="display:none" onchange="if(this.files[0])app.restoreFromBackup(this.files[0])">
   </div>
 
@@ -507,7 +507,7 @@
 <script src="vendor/qrcode-generator-1.4.4.js"></script>
 <script src="vendor/jsqr-1.4.0.js"></script>
 <script>
-const APP_VERSION = 'ssd-v85';
+const APP_VERSION = 'ssd-v86';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD-basic]', ...a);
@@ -1530,7 +1530,7 @@ const app = {
     const allKeys = await db.getAll('my_keys');
     const hasIdentity = allKeys.some(k => k.name.startsWith('O:') && !k.is_revoked);
     const msg = hasIdentity
-      ? 'Wipe ALL data on this device?\n\nYou have a signing identity (O: key) that will be permanently lost unless you have already backed it up.\n\nUse "Back up identity" first if you have not done so.\n\nThis cannot be undone. Downloaded .ssd files are not affected.'
+      ? 'Wipe ALL data on this device?\n\nYou have a signing identity (O: key) that will be permanently lost unless another of your devices already holds it.\n\nUse “Send identity to a new device” first if not. A saved identity file alone cannot bring it back.\n\nThis cannot be undone. Downloaded .ssd files are not affected.'
       : 'Wipe ALL data on this device?\n\nThis deletes every key, contact, document, and setting. It cannot be undone.\n\nDownloaded .ssd files are not affected.';
     if (!confirm(msg)) return;
     try {
@@ -1553,143 +1553,56 @@ const app = {
     location.reload();
   },
 
+  // SPEC-IDENTITY-TRANSFER: send this identity to a freshly set-up device whose
+  // key card has been scanned as a contact. Sealed to that device and to self.
   async backupIdentity() {
-    this.msg('Preparing backup…');
+    this.msg('Preparing identity file…');
     let step = 'load-keys';
     try {
-      const allMyKeys = await db.getAll('my_keys');
-      const oKey = allMyKeys.find(k => k.name.startsWith('O:') && !k.is_revoked);
+      const oKey = (await db.getAll('my_keys')).find(k => k.name.startsWith('O:') && !k.is_revoked);
       if (!oKey) { this.msg('<span class="warn">No owner key (O:) found — complete setup first.</span>'); return; }
-      const signerRec = allMyKeys.find(k => k.name.startsWith('D:') && !k.is_revoked)
-                     || allMyKeys.find(k => k.is_default && !k.is_revoked);
-      if (!signerRec) { this.msg('<span class="warn">No signing key available — create a device key first.</span>'); return; }
-
+      const dests = await basicExchange.identityDestinations();
+      if (!dests.length) { this.msg('<span class="warn">First scan the new device’s key card (Keys → Scan QR code), directly from its screen.</span>'); return; }
+      const list = dests.map((d, i) => `${i + 1}. ${d.name} (${d.hash8})`).join('\n');
+      const dest = dests[Number(prompt(`Send your identity to which device?\n\n${list}\n\nEnter a number:`, dests.length === 1 ? '1' : '')) - 1];
+      if (!dest) { this.clearMsg(); return; }
+      if (!confirm(`Send the PRIVATE keys of ${oKey.name} (${oKey.hash8}) to ${dest.name} (${dest.hash8})?\n\nOnly do this for your own new device, whose key card you scanned directly from its screen. The file is sealed to that device and to this identity.`)) { this.clearMsg(); return; }
       step = 'unlock';
       await this._unlock();
-
-      step = 'export-signing-key';
-      const signingPrivB64 = await keyring.exportKeyB64(oKey.id);
-      const myEncPubB64 = (await db.get('settings', 'my_encryption_key_pub'))?.value;
-      if (!myEncPubB64) { this.msg('<span class="warn">No encryption key found — generate one in Settings first.</span>'); return; }
-      step = 'export-encryption-key';
-      const encPrivB64 = await keyring.exportEncryptionPrivateKeyB64(myEncPubB64);
-      const contacts = await db.getAll('contact_keys');
-
-      const enc = new TextEncoder();
-      const timestamp = new Date().toISOString();
-      const content = {
-        type: 'keyring-backup',
-        key_name: oKey.name, hash8: oKey.hash8,
-        signing_pub_b64: oKey.public_key_b64, signing_priv_b64: signingPrivB64,
-        encryption_pub_b64: myEncPubB64, encryption_priv_b64: encPrivB64,
-        identicon_algorithm: oKey.identicon_algorithm, self_image_b64: oKey.self_image_b64 ?? null,
-        created: oKey.created, expires: oKey.expires ?? null,
-        recheck_interval_days: oKey.recheck_interval_days ?? 90,
-        revocation_hint: oKey.revocation_hint ?? null,
-        contacts,
-      };
-      const engine = renderEngines['ssd-key-transfer-1.0'];
-      const fileHashes = {};
-      for (const [fname, bytes] of Object.entries(engine.hashTargets(content)))
-        fileHashes[fname] = 'sha256:' + await cryptoOps.sha256(bytes);
-
-      step = 'sign-manifest';
-      const privateKey = await keyring.getPrivateKey(signerRec.id);
-      const manifestObj = {
-        version: '1.0', render_spec: 'ssd-key-transfer-1.0',
-        signed_at: timestamp, signer_hash8: signerRec.hash8, signer_name: signerRec.name,
-        files: fileHashes,
-      };
-      const manifestBytes = enc.encode(JSON.stringify(manifestObj, null, 2));
-      const signature = await cryptoOps.sign(privateKey, manifestBytes);
-      const manifestHash = 'sha256:' + await cryptoOps.sha256(manifestBytes);
-      const signatureObj = { algorithm: 'Ed25519', signer_hash8: signerRec.hash8, capacity: ['ssd:author'], signed_at: timestamp, manifest_hash: manifestHash, signature };
-      const innerZip = await artifact.pack(content, 'ssd-key-transfer-1.0', manifestObj, signatureObj);
-
-      const outerMeta = JSON.stringify({ ssd: 'sealed-enc-v1', signed_at: timestamp, signer_hash8: signerRec.hash8, manifest_hash: manifestHash });
-      const outerSig = await cryptoOps.sign(privateKey, enc.encode(outerMeta));
-
-      step = 'seal';
-      const dekBytes = window.crypto.getRandomValues(new Uint8Array(32));
-      const dekKey = await cryptoOps.importAESKey(dekBytes);
-      const { iv_b64: dataIv, ct_b64: dataCt } = await cryptoOps.encryptBytes(innerZip, dekKey);
-      const recipientPub = await cryptoOps.importX25519PublicKeyB64(myEncPubB64);
-      const slot = { for_key: myEncPubB64, ...await cryptoOps.wrapDEK(dekBytes, recipientPub) };
-      const envelope = { ssd: 'sealed-enc-v1', signed_at: timestamp, signer_hash8: signerRec.hash8, manifest_hash: manifestHash, outer_sig: outerSig, recipients: [slot], iv: dataIv, ct: dataCt };
-      const outputBytes = enc.encode(JSON.stringify(envelope));
-
-      const blob = new Blob([outputBytes], { type: 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
+      step = 'build';
+      const bytes = await basicExchange.buildIdentityBackup(oKey, dest.pub);
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
       const a = document.createElement('a');
-      a.href = url; a.download = `ssd-backup-${oKey.hash8}-${Date.now()}.ssd`;
+      a.href = url; a.download = `ssd-identity-${oKey.hash8}-to-${dest.hash8}.ssd`;
       a.click(); URL.revokeObjectURL(url);
-      this.msg('<span class="ok">✓ Identity backup downloaded. Store it safely — it contains your private signing key.</span>');
+      this.msg(`<span class="ok">✓ Identity file for ${this._esc(dest.name)} downloaded. On that device use “Adopt identity from another device”. Only that device or a device already holding this identity can open it — the file cannot recover anything if both are lost.</span>`);
     } catch(e) {
       console.error('[backupIdentity] failed at step:', step, e);
-      if (e.name === 'OperationError' && (step === 'export-signing-key' || step === 'export-encryption-key' || step === 'sign-manifest')) {
-        this.msg('<span class="fail">Backup failed: a key on this device can’t be unlocked with your current passkey. It was created before your current passkey/PIN and needs recovery. No backup was written.</span>');
+      if (e.name === 'OperationError' && step === 'build') {
+        this.msg('<span class="fail">Failed: a key on this device can’t be unlocked with your current passkey. It was created before your current passkey/PIN and needs recovery. No file was written.</span>');
       } else {
-        this.msg(`<span class="fail">Backup failed (${step}): ${e.message || e.name || e}</span>`);
+        this.msg(`<span class="fail">Failed (${step}): ${this._esc(e.message || e.name || e)}</span>`);
       }
     }
   },
 
+  // Adopt an identity file on a freshly set-up device. Replaces only the setup
+  // O: and sealing key; this device's D: key and passkey/PIN are kept.
   async restoreFromBackup(file) {
-    this.msg('Opening backup…');
+    this.msg('Opening identity file…');
     try {
-      const rawBytes = new Uint8Array(await file.arrayBuffer());
-      let envelope;
-      try {
-        const parsed = JSON.parse(new TextDecoder().decode(rawBytes));
-        if (parsed.ssd === 'sealed-enc-v1') envelope = parsed;
-      } catch { /* not JSON */ }
-      if (!envelope) { this.msg('<span class="fail">Not a valid sealed backup — expected a sealed-enc-v1 envelope.</span>'); return; }
-
-      const myEncKeys = await db.getAll('encryption_keys');
-      const slot = envelope.recipients?.find(r => myEncKeys.some(k => k.pub === r.for_key));
-      if (!slot) { this.msg('<span class="fail">This backup was not sealed for any key on this device.</span>'); return; }
-
-      const allMyKeys = await db.getAll('my_keys');
-      const hasIdentity = allMyKeys.some(k => k.name.startsWith('O:') && !k.is_revoked);
-      if (hasIdentity && !confirm('This device already has a signing identity.\n\nRestoring will replace the existing O: key and encryption key. Your current identity will be lost unless separately backed up.\n\nContinue?')) {
-        this.clearMsg(); return;
-      }
-
-      this.msg('Authenticate to open backup…');
-      await this._unlock();
-
-      const myPriv = await keyring.getEncryptionPrivateKey(slot.for_key);
-      const dekBytes = await cryptoOps.unwrapDEK(slot, myPriv);
-      const dekKey = await cryptoOps.importAESKey(dekBytes);
-      const zipBytes = await cryptoOps.decryptBytes(envelope.iv, envelope.ct, dekKey);
-
-      const unpacked = await artifact.unpack(zipBytes);
-      if (unpacked.content.type !== 'keyring-backup') {
-        this.msg('<span class="fail">This file is not an identity backup.</span>'); return;
-      }
-
-      const c = unpacked.content;
-      const deviceName = prompt('Name for this device?', 'My Device');
-      if (!deviceName) { this.clearMsg(); return; }
-
-      await keyring.importKey(c.key_name, c.signing_pub_b64, c.signing_priv_b64);
-      await keyring.importEncryptionKey(c.encryption_pub_b64, c.encryption_priv_b64);
-      await keyring.createKey(`D:${deviceName.trim()}`);
-
-      if (c.contacts?.length) {
-        const existing = await db.getAll('contact_keys');
-        const existingHashes = new Set(existing.map(k => k.hash8));
-        for (const contact of c.contacts) {
-          if (!existingHashes.has(contact.hash8)) {
-            await db.put('contact_keys', { ...contact, id: window.crypto.randomUUID(), received_via: 'backup-restore', received_at: new Date().toISOString() });
-          }
-        }
-      }
-
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const c = await basicExchange.openIdentityBackup(bytes, () => this._unlock());
+      const blocker = await basicExchange.identityAdoptionBlocker(c);
+      if (blocker) { this.msg(`<span class="fail">Can’t adopt: ${this._esc(blocker)}. Adoption only works on a freshly set-up device. Nothing was changed.</span>`); return; }
+      if (!confirm(`Adopt identity ${c.key_name} (${c.hash8})?\n\nCheck that ${c.hash8} matches the identity on the source device’s Home screen.\n\nThis device’s setup identity will be replaced. Its device key and passkey/PIN are kept.`)) { this.clearMsg(); return; }
+      await basicExchange.adoptIdentityBackup(c);
       await this.loadKeys();
-      this.msg(`<span class="ok">✓ Identity restored as <strong>${c.key_name}</strong> (${c.hash8}). A fresh device key D:${deviceName.trim()} has been created.</span>`);
+      this.msg(`<span class="ok">✓ This device now holds <strong>${this._esc(c.key_name)}</strong> (${c.hash8}).</span>`);
     } catch(e) {
-      this.msg(`<span class="fail">Restore failed: ${e.message}</span>`);
+      this.msg(`<span class="fail">${this._esc(e.message)}</span>`);
+    } finally {
+      document.getElementById('keys-restore-file').value = '';
     }
   },
 

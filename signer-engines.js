@@ -123,7 +123,7 @@ const renderEngines = {
       const pre = document.createElement('pre');
       pre.className = 'render-preview';
       if (content.type === 'keyring-backup') {
-        pre.textContent = `Identity Backup\nKey: ${content.key_name} (${content.hash8})\n\nThis sealed artifact contains your private signing identity.\nOpen it via Restore from backup on the Keys tab.`;
+        pre.textContent = `Identity File\nKey: ${content.key_name} (${content.hash8})\n\nThis sealed file contains a private signing identity.\nOn a freshly set-up device, use Adopt identity from another device on the Keys tab.`;
       } else if (content.type === 'keyring-share') {
         pre.textContent = `Public Key Share\nKey: ${content.key_name} (${content.hash8})\n\nThis artifact contains public keys only — no private material.\nImport it to add this identity to your keyring.`;
       } else {
