@@ -171,7 +171,10 @@ class Device:
         return rows
 
     def read_download(self, row_id):
-        return self.adb("shell", f"content read --user {self.user} --uri {self.DOWNLOADS}/{row_id}", binary=True)
+        # ZIP/.ssd payloads are binary. `adb shell` may use a PTY and rewrite
+        # line endings; exec-out keeps the byte stream intact.
+        return self.adb("exec-out", "content", "read", "--user", self.user,
+                        "--uri", f"{self.DOWNLOADS}/{row_id}", binary=True)
 
     def write_download(self, name, data):
         """Create Download/<name> for this user; returns the new row id."""
@@ -183,7 +186,9 @@ class Device:
         if len(new) != 1:
             raise RuntimeError(f"{self}: could not create download row for {name}")
         row = new.pop()
-        self.adb("shell", f"content write --user {self.user} --uri {self.DOWNLOADS}/{row}", input=data)
+        # Disable the remote PTY so binary bytes are not transformed in transit.
+        self.adb("shell", "-T", "content", "write", "--user", self.user,
+                 "--uri", f"{self.DOWNLOADS}/{row}", input=data)
         return row
 
     def delete_download(self, row_id):

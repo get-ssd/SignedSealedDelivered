@@ -60,6 +60,8 @@ class Demo:
     def __init__(self, pw, devices, tl, shots):
         self.pw, self.devices, self.tl, self.shots = pw, devices, tl, shots
         self.by_name = {d.persona: d for d in devices}
+        self.auto_go = False
+        self.reseal_check = False
 
     # ── helpers ────────────────────────────────────────────────────────────
     def attach_all(self):
@@ -98,10 +100,13 @@ class Demo:
         for d in self.devices:
             d.caption(f"NEXT (automatic — just watch): {captions[d]}" if d in captions else "nothing on this tablet", "#b36b00" if d in captions else "#555")
         self.tl.log(f"STEP {self.step_no}: {title} — waiting for go")
-        go = os.path.join(RUNS, "go")
-        while not os.path.exists(go):
-            time.sleep(0.3)
-        os.remove(go)
+        if self.auto_go:
+            self.tl.log(f"STEP {self.step_no}: auto-released by operator instruction")
+        else:
+            go = os.path.join(RUNS, "go")
+            while not os.path.exists(go):
+                time.sleep(0.3)
+            os.remove(go)
         for d in self.devices:
             d.caption(captions.get(d, "watching"), "#c00" if d in captions else "#555")
         self.tl.log(f"STEP {self.step_no}: {title} — running")
@@ -400,6 +405,8 @@ class Demo:
                 self.open_and_verify(r, *landed[r])
         self.shot("verified")
         self.tl.log("run complete")
+        if self.reseal_check:
+            self.reseal_test()
 
     # ── status ─────────────────────────────────────────────────────────────
     def status(self):
@@ -417,14 +424,323 @@ class Demo:
             except Exception as e:
                 self.tl.check(False, f"{d}: unreachable — {e}")
 
+    # ── Keys screen ────────────────────────────────────────────────────────
+    def keys(self):
+        """Exercise Home/Keys exports on Bob, then import his public share on Carol."""
+        if not load_session():
+            raise SystemExit("No demo session — run setup first.")
+        self.attach_all()
+        owner, importer = self.by_name["Bob"], self.by_name["Carol"]
+        for d in self.devices:
+            self.home(d)
+
+        self.step("copy signing code from Home", {owner: "copying Bob's signing code"})
+        owner.page.locator("#home-status").get_by_role("button", name="Copy signing code").click()
+        message = wait_until(lambda: owner.page.locator("#msg").inner_text().strip()
+                             if "Signing code copied" in owner.page.locator("#msg").inner_text()
+                             or "Copy this" in owner.page.locator("#msg").inner_text() else None, 10)
+        self.tl.check(bool(message),
+                      f"Bob Home signing code action: {message!r}")
+
+        self.tab(owner, "keys")
+        self.step("show Bob's signed key-card QR", {owner: "showing the owner key-card QR"})
+        owner.page.locator("#keys-beacon-list").get_by_role("button", name="Show QR").click()
+        owner.page.locator("#qr-modal").wait_for(state="visible", timeout=10000)
+        payload = owner.page.locator("#qr-modal-payload").inner_text().strip()
+        try:
+            card = json.loads(payload)
+        except Exception:
+            card = None
+        identity = self.state(owner).get("identity") or {}
+        self.tl.check(bool(card and card.get("hash8") == identity.get("hash8")),
+                      f"Bob QR contains his self-signed key card ({identity.get('hash8')})")
+        owner.page.locator("#qr-modal").get_by_role("button", name="Close").click()
+
+        self.step("export Bob's encrypted identity backup", {owner: "exporting Bob's encrypted identity backup"})
+        owner.page.reload(wait_until="domcontentloaded")
+        owner.page.wait_for_function("typeof APP_VERSION!=='undefined' && document.getElementById('home-loading').style.display==='none'", timeout=30000)
+        self.tab(owner, "keys")
+        before_backup = set(owner.downloads())
+        owner.page.locator('button[onclick="app.backupIdentity()"]', has_text="Back up identity").click()
+        wait_until(lambda: self.pin_visible(owner) or any(word in owner.page.locator("#msg").inner_text().lower()
+                                                          for word in ("backup downloaded", "backup failed", "no owner key")), 30)
+        self.unlock_if_asked(owner, "export Bob's backup")
+        wait_until(lambda: any(word in owner.page.locator("#msg").inner_text().lower()
+                               for word in ("backup downloaded", "backup failed", "no owner key")), 60)
+        backup_message = owner.page.locator("#msg").inner_text().strip()
+        new_backup_rows = set(owner.downloads()) - before_backup
+        backup_names = [owner.downloads()[row] for row in new_backup_rows]
+        backup_file = next((name for name in backup_names if name.startswith("ssd-backup-") and name.endswith(".ssd")), None)
+        backup_row = next((row for row in new_backup_rows if owner.downloads()[row] == backup_file), None)
+        self.tl.check("backup downloaded" in backup_message.lower() and backup_file is not None,
+                      f"Bob backup export: message={backup_message!r}, new files={backup_names!r}")
+        if backup_file:
+            self.tl.log(f"Bob encrypted backup retained in Demo Downloads: {backup_file}")
+
+        if backup_row is not None:
+            self.step("restore Bob's backup on its source device", {owner: "restoring Bob's encrypted backup"})
+            backup_bytes = owner.read_download(backup_row)
+            owner.page.locator("#keys-restore-file").set_input_files({
+                "name": backup_file, "mimeType": "application/octet-stream", "buffer": backup_bytes,
+            })
+            wait_until(lambda: "restore failed" in owner.page.locator("#msg").inner_text().lower()
+                        or "identity restored" in owner.page.locator("#msg").inner_text().lower(), 45)
+            restore_message = owner.page.locator("#msg").inner_text().strip()
+            after_restore = self.state(owner).get("identity") or {}
+            self.tl.check("identity restored" in restore_message.lower()
+                          and after_restore.get("hash8") == identity.get("hash8"),
+                          f"same-device backup restore preserves Bob's identity: {restore_message!r}; "
+                          f"identity={after_restore!r}")
+
+        self.step("export Bob's public-key share", {owner: "exporting a public-only key share"})
+        before_share = set(owner.downloads())
+        owner.page.locator('button[onclick="app.sharePublicKeys()"]', has_text="Share public keys").click()
+        wait_until(lambda: any(word in owner.page.locator("#msg").inner_text().lower()
+                               for word in ("public key share downloaded", "share export failed", "no owner key")), 60)
+        share_message = owner.page.locator("#msg").inner_text().strip()
+        new_share_rows = set(owner.downloads()) - before_share
+        share_row = next((row for row in new_share_rows
+                          if owner.downloads()[row].startswith("ssd-share-")
+                          and owner.downloads()[row].endswith(".ssd")), None)
+        self.tl.check("public key share downloaded" in share_message.lower() and share_row is not None,
+                      f"Bob public-share export: message={share_message!r}, new files="
+                      f"{[owner.downloads()[row] for row in new_share_rows]!r}")
+
+        if share_row is not None:
+            share_name = owner.downloads()[share_row]
+            self.step("import Bob's public-key share on Carol",
+                      {importer: "importing Bob's public-only key share"})
+            public_bytes = owner.read_download(share_row)
+            importer_row = importer.write_download(share_name, public_bytes)
+            received_bytes = importer.read_download(importer_row)
+            self.tab(importer, "keys")
+            importer.page.locator("#keys-share-import-file").set_input_files({
+                "name": share_name, "mimeType": "application/octet-stream", "buffer": received_bytes,
+            })
+            wait_until(lambda: "key share imported" in importer.page.locator("#msg").inner_text().lower()
+                        or "import failed" in importer.page.locator("#msg").inner_text().lower(), 30)
+            imported_state = self.state(importer)
+            owner_hash = identity.get("hash8")
+            received = any(c.get("hash8") == owner_hash and c.get("label") == "Verify only"
+                           for c in imported_state.get("contacts", []))
+            self.tl.check("key share imported" in importer.page.locator("#msg").inner_text().lower() and received,
+                          f"Carol imported Bob's public key as verify-only: "
+                          f"{importer.page.locator('#msg').inner_text().strip()!r}")
+
+    def identity_transfer(self):
+        """Send Bob's identity to clean Carol, then adopt it without losing Carol's D key/PIN."""
+        bob, carol = self.by_name["Bob"], self.by_name["Carol"]
+        self.attach_all()
+        for d in (bob, carol):
+            self.home(d)
+            self.tl.check(self.state(d).get("version") == "ssd-v86", f"{d}: current app is v86")
+        bob_id = self.state(bob).get("identity") or {}
+        carol_id = self.state(carol).get("identity") or {}
+        if not self.tl.check(bool(bob_id.get("hash8") and carol_id.get("hash8")),
+                             "fresh source and destination identities exist"):
+            return
+
+        self.exchange("paste")
+        bob_enc_pub = bob.page.evaluate("(async()=> (await db.get('settings','my_encryption_key_pub'))?.value)()")
+        carol_enc_pub = carol.page.evaluate("(async()=> (await db.get('settings','my_encryption_key_pub'))?.value)()")
+        carol_device = carol.page.evaluate("async()=> (await db.getAll('my_keys')).find(k=>k.name.startsWith('D:'))?.public_key_b64")
+        before_carol = carol.page.evaluate("async()=>({docs:(await db.getAll('artifacts')).length, drafts:(await db.getAll('drafts')).length, posts:(await db.getAll('social_posts')).length, keys:(await db.getAll('my_keys')).length})")
+        self.tl.check(before_carol == {"docs": 0, "drafts": 0, "posts": 0, "keys": 2},
+                      f"Carol is a clean adoption target: {before_carol!r}")
+
+        self.tab(bob, "keys")
+        before = set(bob.downloads())
+        self.step("Bob exports his identity sealed to himself and Carol", {bob: "exporting Bob's identity for Carol"})
+        bob.page.locator('button[onclick="app.backupIdentity()"]', has_text="Send identity to a new device").click()
+        wait_until(lambda: self.pin_visible(bob) or "identity file for" in bob.page.locator("#msg").inner_text().lower()
+                    or "failed" in bob.page.locator("#msg").inner_text().lower(), 30)
+        self.unlock_if_asked(bob, "export Bob's identity")
+        wait_until(lambda: "identity file for" in bob.page.locator("#msg").inner_text().lower()
+                    or "failed" in bob.page.locator("#msg").inner_text().lower(), 45)
+        export_msg = bob.page.locator("#msg").inner_text().strip()
+        rows = wait_until(lambda: [r for r in bob.downloads() if r not in before and bob.downloads()[r].endswith(".ssd")], 15)
+        if not self.tl.check(bool(rows) and "identity file for" in export_msg.lower(),
+                             f"Bob identity export: {export_msg!r}"):
+            return
+        row = rows[0]
+        filename = bob.downloads()[row]
+        payload = bob.read_download(row)
+        try:
+            envelope = json.loads(payload)
+            recipient_keys = {r["for_key"] for r in envelope.get("recipients", [])}
+        except Exception:
+            envelope, recipient_keys = {}, set()
+        self.tl.check(envelope.get("ssd") == "sealed-enc-v1" and len(recipient_keys) == 2
+                      and recipient_keys == {bob_enc_pub, carol_enc_pub},
+                      f"identity .ssd is sealed to Bob and Carol only ({len(recipient_keys)} recipient slots)")
+
+        self.step("copy Bob's identity file to Carol", {bob: "identity file downloaded", carol: "receiving the same .ssd file"})
+        carol_row = carol.write_download(filename, payload)
+        received = carol.read_download(carol_row)
+        import hashlib
+        self.tl.check(hashlib.sha256(received).digest() == hashlib.sha256(payload).digest(),
+                      "Bob-to-Carol file transfer preserves every byte")
+
+        self.tab(carol, "keys")
+        self.step("Carol adopts Bob's identity", {carol: "importing Bob's identity; keeping this device key and PIN"})
+        carol.page.locator("#keys-restore-file").set_input_files({
+            "name": filename, "mimeType": "application/octet-stream", "buffer": received,
+        })
+        wait_until(lambda: self.pin_visible(carol) or "now holds" in carol.page.locator("#msg").inner_text().lower()
+                    or "can’t adopt" in carol.page.locator("#msg").inner_text().lower()
+                    or "can't adopt" in carol.page.locator("#msg").inner_text().lower()
+                    or "failed" in carol.page.locator("#msg").inner_text().lower(), 30)
+        self.unlock_if_asked(carol, "open Bob's identity file")
+        wait_until(lambda: "now holds" in carol.page.locator("#msg").inner_text().lower()
+                    or "can’t adopt" in carol.page.locator("#msg").inner_text().lower()
+                    or "can't adopt" in carol.page.locator("#msg").inner_text().lower()
+                    or "failed" in carol.page.locator("#msg").inner_text().lower(), 45)
+        restore_msg = carol.page.locator("#msg").inner_text().strip()
+        after_id = self.state(carol).get("identity") or {}
+        after_device = carol.page.evaluate("async()=> (await db.getAll('my_keys')).find(k=>k.name.startsWith('D:'))?.public_key_b64")
+        self.tl.check("now holds" in restore_msg.lower() and after_id.get("hash8") == bob_id.get("hash8"),
+                      f"Carol adopted Bob's O identity: {restore_msg!r}; {after_id!r}")
+        self.tl.check(after_device == carol_device,
+                      "Carol's original D: device key is retained")
+
+    def public_share(self):
+        """Export Bob's signed public keyring share and import it on clean Alice."""
+        bob, alice = self.by_name["Bob"], self.by_name["Alice"]
+        self.attach_all()
+        for d in (bob, alice):
+            self.home(d)
+            self.tl.check(self.state(d).get("version") == "ssd-v86", f"{d}: current app is v86")
+        identity = self.state(bob).get("identity") or {}
+        self.tl.check(bool(identity.get("hash8")), "Bob has an owner identity")
+        self.tab(bob, "keys")
+        before = set(bob.downloads())
+        self.step("Bob exports his signed public keyring share", {bob: "exporting a public-only key share"})
+        bob.page.locator('button[onclick="app.sharePublicKeys()"]', has_text="Share public keys").click()
+        wait_until(lambda: self.pin_visible(bob)
+                    or "public key share downloaded" in bob.page.locator("#msg").inner_text().lower()
+                    or "share export failed" in bob.page.locator("#msg").inner_text().lower(), 30)
+        self.unlock_if_asked(bob, "export Bob's public share")
+        wait_until(lambda: "public key share downloaded" in bob.page.locator("#msg").inner_text().lower()
+                    or "share export failed" in bob.page.locator("#msg").inner_text().lower(), 45)
+        message = bob.page.locator("#msg").inner_text().strip()
+        rows = wait_until(lambda: [r for r in bob.downloads() if r not in before and bob.downloads()[r].endswith(".ssd")], 15)
+        if not self.tl.check("public key share downloaded" in message.lower() and bool(rows),
+                             f"Bob public-share export: {message!r}"):
+            return
+        row = rows[0]
+        filename = bob.downloads()[row]
+        data = bob.read_download(row)
+        archive = bob.page.evaluate("bytes => Object.keys(fflate.unzipSync(new Uint8Array(bytes)))", list(data))
+        self.tl.check({"manifest.json", "signature.json", "source.json"}.issubset(set(archive)),
+                      f"share archive contains manifest, signature, and keyring payload: {archive!r}")
+
+        self.step("Alice imports Bob's public share", {bob: "public share downloaded", alice: "importing Bob's public share"})
+        self.tab(alice, "keys")
+        alice.page.locator("#keys-share-import-file").set_input_files({
+            "name": filename, "mimeType": "application/octet-stream", "buffer": data,
+        })
+        wait_until(lambda: "key share imported" in alice.page.locator("#msg").inner_text().lower()
+                    or "import failed" in alice.page.locator("#msg").inner_text().lower(), 30)
+        result = alice.page.locator("#msg").inner_text().strip()
+        imported = any(c.get("hash8") == identity.get("hash8") and c.get("label") == "Verify only"
+                       for c in self.state(alice).get("contacts", []))
+        self.tl.check("key share imported" in result.lower() and imported,
+                      f"Alice imports Bob's owner key as verify-only: {result!r}")
+
+    def open_expected(self, device, row, name, expect_open):
+        page = device.page
+        state_list = lambda: page.evaluate("[...document.querySelectorAll('#docs-verification p')].map(e=>e.dataset.state)")
+        caption = "open Bob's file" if expect_open else "try Bob's file; it should remain sealed"
+        self.step(f"{device.persona} checks Bob's resealed file", {device: caption})
+        self.tab(device, "docs")
+        self.pause()
+        data = device.read_download(row)
+        with page.expect_file_chooser(timeout=15000) as chooser:
+            page.get_by_role("button", name="Open received .ssd").click()
+        chooser.value.set_files(files=[{"name": name, "mimeType": "application/octet-stream", "buffer": data}])
+        self.tl.log(f"{device}: selected local Download/{name} ({len(data)} bytes)")
+        wait_until(lambda: self.pin_visible(device) or any(s in state_list() for s in ("S2", "S3", "S4", "V7")), 30)
+        if expect_open:
+            self.unlock_if_asked(device, f"enter {device.persona}'s PIN to open")
+        wait_until(lambda: any(s in state_list() for s in ("S2", "S3", "S4", "V7")), 30)
+        states = state_list()
+        verification = page.locator("#docs-verification").inner_text().strip().replace("\n", " | ")
+        content = page.locator("#docs-view-content").inner_text().strip()
+        if expect_open:
+            ok = [self.tl.check("S2" in states, f"{device}: Bob's seal opened (S2) — {verification!r}"),
+                  self.tl.check(" ".join(AGREEMENT.split()) in " ".join(content.split()),
+                                f"{device}: resealed message content matches")]
+            device.caption("Opened Bob's message" if all(ok) else "Open failed", "#0a7d2c" if all(ok) else "#c00")
+        else:
+            ok = [self.tl.check("S3" in states, f"{device}: Alice gets S3 (not addressed) — {verification!r}"),
+                  self.tl.check(not content, f"{device}: Alice cannot read the sealed message")]
+            device.caption("Not addressed; content stayed sealed" if all(ok) else "Unexpected result", "#0a7d2c" if all(ok) else "#c00")
+
+    def reseal_test(self):
+        """Bob reseals the agreement for Bob and Carol; Alice gets a copy but is excluded."""
+        bob, carol, alice = self.by_name["Bob"], self.by_name["Carol"], self.by_name["Alice"]
+        if not self.tl.check(self.has_contact(bob, "Carol"), "Bob has Carol's seal-capable key"):
+            return
+        self.home(bob)
+        self.step("Bob reseals the message for himself and Carol", {bob: "creating a message sealed to Bob and Carol"})
+        self.tab(bob, "docs")
+        page = bob.page
+        page.get_by_role("button", name="+ New").click()
+        page.locator("#docs-text").fill(AGREEMENT)
+        self.step("Bob reviews the two chosen recipients", {bob: "checking Me and Carol are selected"})
+        page.get_by_role("button", name="Preview & Sign").click()
+        page.locator("#docs-preview").wait_for(state="visible")
+        page.locator("#docs-recipient-list label").filter(has_text="Carol").locator("input").check()
+        chosen = page.evaluate("[...document.querySelectorAll('.docs-recipient:checked')].map(c=>c.closest('label').textContent.trim())")
+        chosen_text = " | ".join(chosen)
+        self.tl.log(f"Bob's selected recipients: {chosen_text}")
+        self.tl.check(any("Carol" in item for item in chosen) and any("Me" in item for item in chosen),
+                      "Bob seals to himself and Carol only")
+        self.step("Bob signs the resealed message", {bob: "signing with Bob's demo PIN"})
+        page.locator("#docs-sign-btn").click()
+        wait_until(lambda: self.pin_visible(bob) or page.locator("#docs-deliver").is_visible(), 20)
+        if self.pin_visible(bob) and not self.auto_pin(bob):
+            self.human([(bob, "enter Bob's SSD PIN and press Confirm", lambda: page.locator("#docs-deliver").is_visible())])
+        wait_until(lambda: page.locator("#docs-deliver").is_visible(), 30)
+        summary = page.locator("#docs-deliver-summary").inner_text().strip()
+        self.tl.check("Carol" in summary and "Me" in summary, f"Bob's document says sealed for Bob and Carol: {summary!r}")
+
+        session = load_session()
+        self.step("send the same sealed file to Bob, Carol, and excluded Alice",
+                  {bob: "downloading Bob's resealed file", carol: "receiving the file", alice: "receiving an excluded-recipient copy"})
+        before = set(bob.downloads())
+        page.get_by_role("button", name="Download").click()
+        new_rows = wait_until(lambda: [row for row in bob.downloads()
+                                      if row not in before and bob.downloads()[row].endswith(".ssd")], 30)
+        if not self.tl.check(bool(new_rows), "Bob's resealed message downloaded"):
+            return
+        bob_row = new_rows[0]
+        filename = bob.downloads()[bob_row]
+        self.record(session, bob, bob_row, filename)
+        data = bob.read_download(bob_row)
+        landed = {bob: (bob_row, filename)}
+        for recipient in (carol, alice):
+            row = recipient.write_download(filename, data)
+            self.record(session, recipient, row, filename)
+            landed[recipient] = (row, filename)
+            self.tl.log(f"{recipient}: received the identical Bob-sealed file in Demo Downloads")
+
+        self.open_expected(bob, *landed[bob], expect_open=True)
+        self.open_expected(carol, *landed[carol], expect_open=True)
+        self.open_expected(alice, *landed[alice], expect_open=False)
+
 
 def main():
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="backslashreplace")
     ap = argparse.ArgumentParser()
-    ap.add_argument("command", choices=["setup", "run", "status", "setdown"])
+    ap.add_argument("command", choices=["setup", "run", "keys", "identity-transfer", "public-share", "status", "setdown"])
     ap.add_argument("--exchange", choices=["qr", "paste"], default="qr")
     ap.add_argument("--delivery", choices=["share", "courier"], default="courier")
     ap.add_argument("--config", default=os.path.join(HERE, "personas.json"))
     ap.add_argument("--shots", action="store_true", help="save a screenshot per device per step under demo/runs/")
+    ap.add_argument("--auto", action="store_true", help="release every tablet step without waiting for a go file")
+    ap.add_argument("--reseal-check", action="store_true", help="after the standard run, Bob reseals to himself and Carol; Alice receives a copy but cannot open it")
     args = ap.parse_args()
     cfg, devices = load_devices(args.config)
     stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -432,9 +748,15 @@ def main():
     shots = os.path.join(RUNS, stamp) if args.shots else None
     with sync_playwright() as pw:
         demo = Demo(pw, devices, tl, shots)
+        demo.auto_go = args.auto
+        demo.reseal_check = args.reseal_check
         try:
             if args.command == "run":
                 demo.run(args.exchange, args.delivery)
+            elif args.command == "identity-transfer":
+                demo.identity_transfer()
+            elif args.command == "public-share":
+                demo.public_share()
             else:
                 getattr(demo, args.command)()
         finally:
