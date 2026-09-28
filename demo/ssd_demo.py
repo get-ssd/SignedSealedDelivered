@@ -4,6 +4,11 @@
     py demo/ssd_demo.py run [--exchange=qr|paste] [--delivery=share|courier]
     py demo/ssd_demo.py status
     py demo/ssd_demo.py setdown
+    py demo/ssd_demo.py transfer-test --mode test --personas Bob,Carol
+
+--mode demo (default): each step waits for the operator's go (demo/runs/go),
+with pauses so the audience can follow. --mode test: steps run straight
+through without pauses, and the run stops at the first failed check.
 
 Personas and serials come from demo/personas.json (see personas.example.json).
 The app must be served on the configured port (00-startup.bat serves 8105).
@@ -19,7 +24,7 @@ import time
 
 from playwright.sync_api import sync_playwright
 
-from devices import Timeline, load_devices, wait_until
+from devices import StopRun, Timeline, load_devices, wait_until
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUNS = os.path.join(HERE, "runs")
@@ -62,15 +67,26 @@ class Demo:
         self.by_name = {d.persona: d for d in devices}
         self.auto_go = False
         self.reseal_check = False
+        self.pause_s = PAUSE
+        self.dismiss = {}  # device -> dialog type ('prompt'/'confirm') to cancel once
+        self.attached = False
 
     # ── helpers ────────────────────────────────────────────────────────────
     def attach_all(self):
+        if self.attached:
+            return
+        self.attached = True
         for d in self.devices:
             d.attach(self.pw)
             d.page.on("dialog", lambda dlg, d=d: self._dialog(d, dlg))
             self.tl.log(f"{d}: attached to Chrome (Android user {d.user}), {d.page.url}")
 
     def _dialog(self, d, dlg):
+        if self.dismiss.get(d) == dlg.type:
+            del self.dismiss[d]
+            self.tl.log(f"{d}: {dlg.type} dialog CANCELLED: {dlg.message.splitlines()[0][:70]!r}")
+            dlg.dismiss()
+            return
         self.tl.log(f"{d}: {dlg.type} dialog answered OK: {dlg.message.splitlines()[0][:70]!r}"
                     + (f" -> {dlg.default_value!r}" if dlg.type == "prompt" else ""))
         dlg.accept(dlg.default_value if dlg.type == "prompt" else None)
@@ -111,8 +127,8 @@ class Demo:
             d.caption(captions.get(d, "watching"), "#c00" if d in captions else "#555")
         self.tl.log(f"STEP {self.step_no}: {title} — running")
 
-    def pause(self, seconds=PAUSE):
-        time.sleep(seconds)
+    def pause(self, seconds=None):
+        time.sleep(self.pause_s if seconds is None else min(seconds, self.pause_s))
 
     def human(self, pairs, timeout=HUMAN_TIMEOUT):
         """pairs: [(device, action, done_fn)]. Announce all, wait for all."""
@@ -730,11 +746,199 @@ class Demo:
         self.open_expected(alice, *landed[alice], expect_open=False)
 
 
+    # ── identity transfer: full basic-shell acceptance on Bob → Carol ─────────
+    def msg(self, d):
+        return d.page.locator("#msg").inner_text().strip()
+
+    def wait_msg(self, d, words, timeout=45):
+        """Wait (unlocking with the demo PIN if asked) until #msg holds one of words."""
+        hit = lambda: any(w in self.msg(d).lower() for w in words)
+        wait_until(lambda: self.pin_visible(d) or hit(), 30)
+        self.unlock_if_asked(d, "unlock")
+        wait_until(hit, timeout)
+        return self.msg(d)
+
+    def key_counts(self, d):
+        return d.page.evaluate("""async()=>({my_keys:(await db.getAll('my_keys')).map(k=>k.name+':'+k.hash8).sort(),
+            enc:(await db.getAll('encryption_keys')).length, contacts:(await db.getAll('contact_keys')).length,
+            persons:(await db.getAll('contacts')).length, docs:(await db.getAll('artifacts')).length})""")
+
+    def make_doc(self, d, text, extra=()):
+        """Sign a text document sealed to Me (+ extra personas); return (name, bytes)."""
+        page = d.page
+        self.home(d)
+        self.tab(d, "docs")
+        page.get_by_role("button", name="+ New").click()
+        page.locator("#docs-text").fill(text)
+        page.get_by_role("button", name="Preview & Sign").click()
+        page.locator("#docs-preview").wait_for(state="visible")
+        for r in extra:
+            page.locator("#docs-recipient-list label").filter(has_text=r).locator("input").check()
+        page.locator("#docs-sign-btn").click()
+        # Rung 3 asks twice: unlock, then the per-signature PIN.
+        end = time.time() + 45
+        while time.time() < end and not page.locator("#docs-deliver").is_visible():
+            if self.pin_visible(d):
+                self.unlock_if_asked(d, "sign")
+            time.sleep(0.3)
+        summary = page.locator("#docs-deliver-summary").inner_text().strip()
+        self.tl.check("Me" in summary and all(r in summary for r in extra), f"{d}: signed, {summary!r}")
+        before = set(d.downloads())
+        page.get_by_role("button", name="Download").click()
+        rows = wait_until(lambda: [r for r in d.downloads() if r not in before and d.downloads()[r].endswith(".ssd")], 30)
+        self.tl.check(bool(rows), f"{d}: document downloaded")
+        return d.downloads()[rows[0]], d.read_download(rows[0])
+
+    def open_doc(self, d, name, data):
+        """Open an .ssd in Docs; return (states, verification text, content, PIN was asked)."""
+        page = d.page
+        self.tab(d, "docs")
+        states = lambda: page.evaluate("[...document.querySelectorAll('#docs-verification p')].map(e=>e.dataset.state)")
+        with page.expect_file_chooser(timeout=15000) as fc:
+            page.get_by_role("button", name="Open received .ssd").click()
+        fc.value.set_files(files=[{"name": name, "mimeType": "application/octet-stream", "buffer": data}])
+        wait_until(lambda: self.pin_visible(d) or any(s in states() for s in ("S2", "S3", "S4", "V7")), 30)
+        asked = self.pin_visible(d)
+        self.unlock_if_asked(d, "open")
+        wait_until(lambda: any(s in states() for s in ("S3", "S4", "V1", "V2", "V3", "V4", "V5", "V6", "V7")), 30)
+        return (states(), page.locator("#docs-verification").inner_text().strip().replace("\n", " | "),
+                page.locator("#docs-view-content").inner_text(), asked)
+
+    def adopt(self, d, name, data):
+        self.home(d)
+        self.tab(d, "keys")
+        # Sentinel first, so a stale or empty #msg is not taken as the outcome.
+        # A cancelled confirm clears #msg, so "empty after opening" also ends the wait.
+        d.page.evaluate("document.getElementById('msg').textContent='__wait__'")
+        d.page.locator("#keys-restore-file").set_input_files({"name": name, "mimeType": "application/octet-stream", "buffer": data})
+        opened = lambda: (lambda m: m != "__wait__" and not m.startswith("Opening"))(d.page.locator("#msg").inner_text().strip())
+        wait_until(lambda: self.pin_visible(d) or opened(), 30)
+        self.unlock_if_asked(d, "open identity file")
+        wait_until(opened, 45)
+        return self.msg(d)
+
+    def transfer_test(self):
+        """SPEC-IDENTITY-TRANSFER acceptance on the basic shell, PIN rung, two real
+        devices. Wipes and sets up both first. Run with --personas Bob,Carol."""
+        bob, carol = self.by_name.get("Bob"), self.by_name.get("Carol")
+        if not (bob and carol) or len(self.devices) != 2:
+            raise SystemExit("transfer-test drives exactly Bob and Carol: use --personas Bob,Carol")
+        if not (bob.pin and carol.pin):
+            raise SystemExit("transfer-test needs demo PINs for Bob and Carol in personas.json")
+        if load_session():
+            self.setdown()
+        self.setup()
+        for d in self.devices:
+            self.home(d)
+            self.tl.check(self.state(d).get("version") == "ssd-v86", f"{d}: current app is v86")
+        bob_id = self.state(bob)["identity"]
+        self.exchange("paste")
+        carol_setup = self.key_counts(carol)  # after the exchange: Carol holds Bob's card
+
+        self.step("Bob signs a document sealed to himself (before the transfer)", {bob: "signing a note sealed to Bob"})
+        pre_text = "Pre-transfer note: sealed to Bob before his identity moved to Carol's tablet."
+        pre_name, pre_data = self.make_doc(bob, pre_text)
+
+        self.step("Bob cancels the destination prompt", {bob: "Send identity… then Cancel"})
+        self.home(bob)
+        self.tab(bob, "keys")
+        before = set(bob.downloads())
+        self.dismiss[bob] = "prompt"
+        bob.page.locator('button[onclick="app.backupIdentity()"]').click()
+        time.sleep(3)
+        self.tl.check(not [r for r in bob.downloads() if r not in before] and "identity file" not in self.msg(bob).lower(),
+                      f"{bob}: cancelled destination prompt writes no file (msg {self.msg(bob)!r})")
+
+        self.step("Bob cancels the private-key confirmation", {bob: "Send identity… then Cancel at the confirmation"})
+        self.dismiss[bob] = "confirm"
+        bob.page.locator('button[onclick="app.backupIdentity()"]').click()
+        time.sleep(3)
+        self.tl.check(not [r for r in bob.downloads() if r not in before] and "identity file" not in self.msg(bob).lower(),
+                      f"{bob}: cancelled confirmation writes no file (msg {self.msg(bob)!r})")
+
+        self.step("Bob sends his identity to Carol", {bob: "exporting Bob's identity for Carol"})
+        bob.page.locator('button[onclick="app.backupIdentity()"]').click()
+        export_msg = self.wait_msg(bob, ("identity file for", "failed"))
+        rows = wait_until(lambda: [r for r in bob.downloads() if r not in before and bob.downloads()[r].endswith(".ssd")], 15)
+        self.tl.check(bool(rows) and "identity file for" in export_msg.lower(), f"{bob}: identity export — {export_msg!r}")
+        id_name, id_data = bob.downloads()[rows[0]], bob.read_download(rows[0])
+        envelope = json.loads(id_data)
+        self.tl.check(envelope.get("ssd") == "sealed-enc-v1" and len(envelope.get("recipients", [])) == 2,
+                      f"identity file is sealed, {len(envelope.get('recipients', []))} recipient slots")
+        self.tl.check(b"signing_priv_b64" not in id_data and b"encryption_priv_b64" not in id_data,
+                      "no private-key field appears outside the seal")
+
+        self.step("Carol tries to adopt Bob's public share (must be refused)", {bob: "exporting a public share", carol: "feeding the share to Adopt"})
+        before = set(bob.downloads())
+        bob.page.locator('button[onclick="app.sharePublicKeys()"]').click()
+        self.wait_msg(bob, ("public key share downloaded", "failed"))
+        rows = wait_until(lambda: [r for r in bob.downloads() if r not in before and bob.downloads()[r].endswith(".ssd")], 15)
+        self.tl.check(bool(rows), f"{bob}: public share downloaded")
+        share_name, share_data = bob.downloads()[rows[0]], bob.read_download(rows[0])
+        refusal = self.adopt(carol, share_name, share_data)
+        self.tl.check("now holds" not in refusal.lower() and self.key_counts(carol) == carol_setup,
+                      f"{carol}: public share refused as an identity file, nothing changed — {refusal!r}")
+
+        self.step("Carol cancels the adoption confirmation", {carol: "Adopt identity… then Cancel"})
+        self.dismiss[carol] = "confirm"
+        cancelled = self.adopt(carol, id_name, id_data)
+        self.tl.check("now holds" not in cancelled.lower() and self.key_counts(carol) == carol_setup,
+                      f"{carol}: cancelled adoption changes nothing (msg {cancelled!r})")
+
+        self.step("Carol adopts Bob's identity", {carol: "adopting Bob's identity; keeping this device key and PIN"})
+        carol_d = [k for k in carol_setup["my_keys"] if k.startswith("D:")]
+        adopted = self.adopt(carol, id_name, id_data)
+        after = self.key_counts(carol)
+        self.tl.check("now holds" in adopted.lower() and self.state(carol)["identity"]["hash8"] == bob_id["hash8"],
+                      f"{carol}: adopted — {adopted!r}")
+        self.tl.check(sorted(k for k in after["my_keys"] if k.startswith("D:")) == carol_d and len(after["my_keys"]) == 2
+                      and after["enc"] == 1, f"{carol}: holds O:Bob + own D: only, one sealing key — {after!r}")
+        self.tl.check(after["contacts"] == 0, f"{carol}: Bob's scanned card and Carol's own card are not left as contacts ({after['contacts']})")
+
+        self.step("Carol tries to adopt the same file again (must be refused)", {carol: "adopting again"})
+        again = self.adopt(carol, id_name, id_data)
+        self.tl.check("already has this identity" in again.lower() and self.key_counts(carol) == after,
+                      f"{carol}: second adoption refused — {again!r}")
+
+        self.step("Carol reloads, unlocks with her own PIN, opens Bob's pre-transfer document",
+                  {carol: "reload, then open the note sealed to Bob earlier"})
+        carol.page.reload(wait_until="domcontentloaded")
+        self.home(carol)
+        states, text, content, asked = self.open_doc(carol, pre_name, pre_data)
+        self.tl.check(asked, f"{carol}: keyring was locked after reload; unlocked with Carol's PIN")
+        self.tl.check("S2" in states and "V1" in states and bob_id["hash8"] in text,
+                      f"{carol}: opened pre-transfer document as Bob — {states} {text!r}")
+        self.tl.check(" ".join(pre_text.split()) in " ".join(content.split()), f"{carol}: pre-transfer content matches")
+
+        docs = self.key_counts(carol)["docs"]
+        if docs:
+            self.step("Carol, now holding a document, tries to adopt again", {carol: "adopting with a document present"})
+            busy = self.adopt(carol, id_name, id_data)
+            self.tl.check("document" in busy.lower() and "can’t adopt" in busy.lower(),
+                          f"{carol}: adoption refused on a device with content — {busy!r}")
+        else:
+            self.tl.log(f"{carol}: opening did not store the document; content-refusal case not exercised here")
+
+        self.step("Carol signs as Bob; Bob verifies it", {carol: "signing a note as O:Bob", bob: "opening Carol's note"})
+        post_text = "Post-transfer note: signed on Carol's tablet with Bob's owner key."
+        post_name, post_data = self.make_doc(carol, post_text)
+        self.home(bob)
+        states, text, content, _ = self.open_doc(bob, post_name, post_data)
+        self.tl.check("S2" in states and "V1" in states and bob_id["hash8"] in text,
+                      f"{bob}: Carol's note opens (shared owner sealing key) and is signed by O:Bob — {states} {text!r}")
+        self.tl.check(" ".join(post_text.split()) in " ".join(content.split()), f"{bob}: post-transfer content matches")
+        self.shot("transfer-test")
+        self.tl.log("transfer-test complete")
+
+
 def main():
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="backslashreplace")
     ap = argparse.ArgumentParser()
-    ap.add_argument("command", choices=["setup", "run", "keys", "identity-transfer", "public-share", "status", "setdown"])
+    ap.add_argument("command", choices=["setup", "run", "keys", "identity-transfer", "public-share", "transfer-test", "status", "setdown"])
+    ap.add_argument("--mode", choices=["demo", "test"], default="demo",
+                    help="demo: step on the operator's go; test: run straight through, stop at the first failure")
+    ap.add_argument("--personas", help="comma-separated subset of personas to drive, e.g. Bob,Carol")
     ap.add_argument("--exchange", choices=["qr", "paste"], default="qr")
     ap.add_argument("--delivery", choices=["share", "courier"], default="courier")
     ap.add_argument("--config", default=os.path.join(HERE, "personas.json"))
@@ -743,12 +947,20 @@ def main():
     ap.add_argument("--reseal-check", action="store_true", help="after the standard run, Bob reseals to himself and Carol; Alice receives a copy but cannot open it")
     args = ap.parse_args()
     cfg, devices = load_devices(args.config)
+    if args.personas:
+        wanted = [n.strip() for n in args.personas.split(",")]
+        devices = [d for d in devices if d.persona in wanted]
+        if len(devices) != len(wanted):
+            raise SystemExit(f"--personas {args.personas}: not all found in {args.config}")
+    test = args.mode == "test"
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    tl = Timeline(os.path.join(RUNS, f"{stamp}-{args.command}.log"))
+    tl = Timeline(os.path.join(RUNS, f"{stamp}-{args.command}.log"), stop_on_fail=test)
     shots = os.path.join(RUNS, stamp) if args.shots else None
     with sync_playwright() as pw:
         demo = Demo(pw, devices, tl, shots)
-        demo.auto_go = args.auto
+        demo.auto_go = args.auto or test
+        if test:
+            demo.pause_s = 0.2
         demo.reseal_check = args.reseal_check
         try:
             if args.command == "run":
@@ -757,8 +969,12 @@ def main():
                 demo.identity_transfer()
             elif args.command == "public-share":
                 demo.public_share()
+            elif args.command == "transfer-test":
+                demo.transfer_test()
             else:
                 getattr(demo, args.command)()
+        except StopRun as e:
+            tl.log(f"STOPPED at first failure (test mode): {e}")
         finally:
             for d in devices:
                 d.detach()

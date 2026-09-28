@@ -17,10 +17,15 @@ import time
 T0 = time.time()
 
 
+class StopRun(Exception):
+    """Raised by Timeline.check in test mode at the first failure."""
+
+
 class Timeline:
-    def __init__(self, path):
+    def __init__(self, path, stop_on_fail=False):
         self.path = path
         self.failures = []
+        self.stop_on_fail = stop_on_fail
         os.makedirs(os.path.dirname(path), exist_ok=True)
 
     def log(self, message):
@@ -33,6 +38,8 @@ class Timeline:
         self.log(("ok    " if ok else "FAIL  ") + message)
         if not ok:
             self.failures.append(message)
+            if self.stop_on_fail:
+                raise StopRun(message)
         return ok
 
 
