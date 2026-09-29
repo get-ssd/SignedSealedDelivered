@@ -50,7 +50,7 @@ const keyring = {
       if (pin === null) {
         const err = new Error('PIN required'); err.pinRequired = true; throw err;
       }
-      this._sessionKey = await this._pinToAesKey(pin);
+      this._sessionKey = await this._checkedPinKey(pin);
       this._pinCanary = await cryptoOps.encryptBytes(
         new TextEncoder().encode('ssd-pin-canary-v1'), this._sessionKey
       );
@@ -67,7 +67,7 @@ const keyring = {
         const err = new Error('PIN required'); err.pinRequired = true; throw err;
       }
       this._rung2GatePassed = false;
-      this._sessionKey = await this._pinToAesKey(pin);
+      this._sessionKey = await this._checkedPinKey(pin);
       this._pinCanary = await cryptoOps.encryptBytes(
         new TextEncoder().encode('ssd-pin-canary-v1'), this._sessionKey
       );
@@ -83,6 +83,19 @@ const keyring = {
     this._sessionKey = aesKey;
     await this._afterUnlock();
     return this._sessionKey;
+  },
+
+  // PIN → unlock key, refused unless it opens the stored master key. Without this
+  // a wrong PIN left the keyring "unlocked" with a key that decrypts nothing, and
+  // later unlocks never prompted again. No master-key record yet (fresh install,
+  // pre-MK migration) means there is nothing to check against.
+  async _checkedPinKey(pin) {
+    const key = await this._pinToAesKey(pin);
+    if (await this._getMasterKeyRecord()) {
+      try { await this._masterKey(key); }
+      catch { const err = new Error('Incorrect PIN.'); err.wrongPin = true; throw err; }
+    }
+    return key;
   },
 
   // ── Master key (SPEC-KEYRING §5, §6) ───────────────────────────────────────
