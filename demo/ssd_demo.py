@@ -549,7 +549,7 @@ class Demo:
         self.attach_all()
         for d in (bob, carol):
             self.home(d)
-            self.tl.check(self.state(d).get("version") == "ssd-v87", f"{d}: current app is v87")
+            self.tl.check(self.state(d).get("version") == "ssd-v88", f"{d}: current app is v88")
         bob_id = self.state(bob).get("identity") or {}
         carol_id = self.state(carol).get("identity") or {}
         if not self.tl.check(bool(bob_id.get("hash8") and carol_id.get("hash8")),
@@ -625,7 +625,7 @@ class Demo:
         self.attach_all()
         for d in (bob, alice):
             self.home(d)
-            self.tl.check(self.state(d).get("version") == "ssd-v87", f"{d}: current app is v87")
+            self.tl.check(self.state(d).get("version") == "ssd-v88", f"{d}: current app is v88")
         identity = self.state(bob).get("identity") or {}
         self.tl.check(bool(identity.get("hash8")), "Bob has an owner identity")
         self.tab(bob, "keys")
@@ -830,7 +830,7 @@ class Demo:
         self.setup()
         for d in self.devices:
             self.home(d)
-            self.tl.check(self.state(d).get("version") == "ssd-v87", f"{d}: current app is v87")
+            self.tl.check(self.state(d).get("version") == "ssd-v88", f"{d}: current app is v88")
         bob_id = self.state(bob)["identity"]
         self.exchange("paste")
         carol_setup = self.key_counts(carol)  # after the exchange: Carol holds Bob's card

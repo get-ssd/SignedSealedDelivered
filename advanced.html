@@ -534,7 +534,7 @@
 <script src="vendor/jsqr-1.4.0.js"></script>
 <script>
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v87';
+const APP_VERSION = 'ssd-v88';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD]', ...a);
@@ -3092,7 +3092,7 @@ const app = {
       const fromTick = signature === null ? { trust_type: 'unverified', received_via: 'tick-share' } : {};
       for (const contact of (c.contacts ?? [])) {
         if (contact.hash8 && contact.public_key_b64)
-          await mergeKey(contact.hash8, contact.public_key_b64, contact.name ?? contact.hash8, { ...(contact.source ? { source: contact.source } : {}), ...fromTick });
+          await mergeKey(contact.hash8, contact.public_key_b64, contact.name ?? contact.hash8, { ...(contact.source ? { source: contact.source } : {}), ...(contact.identity ? { identity: contact.identity } : {}), ...fromTick });
       }
 
       await this.loadKeyring();

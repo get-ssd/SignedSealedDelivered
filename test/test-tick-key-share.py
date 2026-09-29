@@ -178,6 +178,11 @@ async def main():
             check('Tick holds the same hash8s and keys as SSD',
                   {h: k['public_key'] for h, k in ks['keystore'].items()} == want)
             await expect(tick.locator('#owner-info')).to_contain_text(a_hash)
+            b_hash = ssd_keys['contacts'][0]['hash8']
+            check('sharer\'s own key is direct, its contact is from the sharer\'s list',
+                  ks['keystore'][a_hash]['source'] == 'direct'
+                  and ks['keystore'][b_hash]['source'] == 'bundle'
+                  and ks['keystore'][b_hash]['vouched_by'] == a_hash)
 
             # Tampered SSD share is refused by Tick.
             bad = rezip(share, lambda c: c['contacts'][0].update(name='Mallory'))
@@ -192,7 +197,7 @@ async def main():
               const hash8 = await _hash8(pub);
               const ks = await getKeystore();
               ks[hash8] = { hash8, name: 'Carol', public_key: pub, signing_algorithm: 'Ed25519',
-                            imported_at: new Date().toISOString(), source: 'profile' };
+                            imported_at: new Date().toISOString(), source: 'profile', identity: 'fb:carol' };
               await saveKeystore(ks);
               return { hash8, pub };
             }''')
@@ -210,10 +215,27 @@ async def main():
             rec = await alice.evaluate("async h => (await db.getAll('contact_keys')).find(k => k.hash8 === h)", carol['hash8'])
             check('imported key matches Tick\'s', rec and rec['public_key_b64'] == carol['pub'])
             check('imported key is unverified, from Tick, provenance kept',
-                  rec['trust_type'] == 'unverified' and rec['received_via'] == 'tick-share' and rec['source'] == 'profile')
+                  rec['trust_type'] == 'unverified' and rec['received_via'] == 'tick-share'
+                  and rec['source'] == 'profile' and rec['identity'] == 'fb:carol')
             existing = await alice.evaluate("async h => (await db.getAll('contact_keys')).find(k => k.hash8 === h)",
                                             ssd_keys['contacts'][0]['hash8'])
             check('existing peer key left as peer', existing['trust_type'] == 'peer')
+
+            # Round trip: SSD shares Carol on to a second Tick; her origin survives.
+            tick2_ctx = await browser.new_context()
+            await tick2_ctx.add_init_script(STORAGE_STUB)
+            tick2 = await tick2_ctx.new_page()
+            tick2.on('pageerror', lambda e: errors.append('tick2: ' + str(e)))
+            await tick2.goto(TICK_URL)
+            await tick2.wait_for_function("document.getElementById('owner-info').textContent.includes('Not set')")
+            msg = await tick_import(tick2, await ssd_share(alice), owner=False)
+            check(f'second Tick imports the SSD share ({msg})', '3 new' in msg)
+            ks2 = await tick2.evaluate("async () => (await chrome.storage.local.get('keystore')).keystore")
+            check('Carol keeps profile origin and handle after the round trip',
+                  ks2[carol['hash8']]['source'] == 'profile' and ks2[carol['hash8']]['identity'] == 'fb:carol')
+            check('Bob arrives as from Alice\'s list',
+                  ks2[b_hash]['source'] == 'bundle' and ks2[b_hash]['vouched_by'] == a_hash)
+            await expect(tick2.locator('#key-list')).to_contain_text("From Alice")
 
             # Another owner's device refuses it.
             msg = await ssd_import(bob, tick_share)
