@@ -311,8 +311,8 @@
     <label>Signing key</label>
     <select id="social-key-select" onchange="app._prefillIdentity()"></select>
 
-    <label>Your identity <span class="form-hint" style="display:inline">(platform:handle, e.g. fb:profile/alice)</span></label>
-    <input type="text" id="social-identity" placeholder="fb:profile/username" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    <label>Your identity <span class="form-hint" style="display:inline">(where readers find your key)</span></label>
+    <input type="text" id="social-identity" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
 
     <label>Post text</label>
     <textarea id="social-text" placeholder="Write your post…" rows="7"></textarea>
@@ -507,7 +507,7 @@
 <script src="vendor/qrcode-generator-1.4.4.js"></script>
 <script src="vendor/jsqr-1.4.0.js"></script>
 <script>
-const APP_VERSION = 'ssd-v88';
+const APP_VERSION = 'ssd-v89';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD-basic]', ...a);
@@ -518,6 +518,7 @@ const log = (...a) => console.log('[SSD-basic]', ...a);
 <script src="keyring.js"></script>
 <script src="signer-engines.js"></script>
 <script src="basic-exchange.js"></script>
+<script src="social-identity.js"></script>
 <script src="opfs-identicon.js"></script>
 <script src="pwa-updates.js"></script>
 <script>
@@ -809,7 +810,7 @@ const app = {
     const identity = document.getElementById('social-identity').value.trim();
     if (!text)     { this.msg('<span class="warn">Write something first.</span>'); return; }
     if (!keyId)    { this.msg('<span class="warn">Select a signing key.</span>'); return; }
-    if (!identity) { this.msg('<span class="warn">Enter your platform identity (e.g. fb:profile/username).</span>'); return; }
+    if (!identity) { this.msg('<span class="warn">Choose your platform and enter your handle.</span>'); return; }
     this.msg('Signing…');
     try {
       await this._unlock();

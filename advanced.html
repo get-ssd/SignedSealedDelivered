@@ -281,8 +281,8 @@
     </div>
     <div class="form-group">
       <label>Identity hint</label>
-      <input id="social-identity" type="text" placeholder="e.g. fb:alicesmith or https://example.com/key.json">
-      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Tells readers where to find your key. Platform handle (fb:, tw:, li:) or key URL.</div>
+      <input id="social-identity" type="text">
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Tells readers where to find your key: choose your platform, then your handle or profile address.</div>
     </div>
     <div class="form-group">
       <label>Post text</label>
@@ -534,7 +534,7 @@
 <script src="vendor/jsqr-1.4.0.js"></script>
 <script>
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v88';
+const APP_VERSION = 'ssd-v89';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD]', ...a);
@@ -546,6 +546,7 @@ const log = (...a) => console.log('[SSD]', ...a);
 <script src="keyring.js"></script>
 <script src="signer-engines.js"></script>
 <script src="basic-exchange.js"></script>
+<script src="social-identity.js"></script>
 <script src="opfs-identicon.js"></script>
 <script>
 'use strict';
