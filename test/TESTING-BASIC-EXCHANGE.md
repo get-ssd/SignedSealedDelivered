@@ -31,6 +31,12 @@ the UI, including the contact-name dialog.
 
 ## Authentication direction
 
+**Superseded in part, 2026-09-29 (ssd-v92):** synced passkeys are accepted. Most
+users sign with Google Password Manager, which only issues backup-eligible
+credentials, so rejecting BE/BS made signing impossible for them. User
+verification, platform attachment on registration, and rejection of the invalid
+BS-without-BE state are still enforced. The rejection described below is history.
+
 Human clarification on 2026-09-27: PIN protection is a normal supported fallback,
 not a demo-only exception. It is accepted for these tablets. No Google account
 or credential sync is acceptable. The two governing rules are: you sign what you

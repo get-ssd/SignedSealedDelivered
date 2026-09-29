@@ -43,8 +43,12 @@ async function main() {
     assert.equal(selection.userVerification, 'required');
   });
   check('accepted local credential is persisted', () => assert.ok(local.records.has('credential_id')));
+  for (const [name, options] of [['backup eligible', {flags: 13}], ['backed up', {flags: 29}]]) {
+    const f = fixture(options);
+    await f.subject.register('synced', {requirePrf: true});
+    check(name + ' (synced passkey) accepted', () => assert.ok(f.records.has('credential_id')));
+  }
   for (const [name, options] of [
-    ['backup eligible', {flags: 13}], ['backed up', {flags: 29}],
     ['invalid backup state', {flags: 21}], ['no user verification', {flags: 1}],
     ['no user presence', {flags: 4}], ['no auth data', {missingData: true}],
     ['external authenticator', {attachment: 'cross-platform'}],
@@ -57,7 +61,11 @@ async function main() {
   const fallback = fixture({prf: false});
   const registered = await fallback.subject.register('explicit fallback');
   check('low-level explicit non-PRF fallback remains distinguishable', () => assert.equal(registered.prfSupported, false));
-  for (const [name, options] of [['syncable assertion', {flags: 13}], ['unverified assertion', {flags: 1}], ['missing assertion data', {missingData: true}]]) {
+  const synced = fixture({flags: 29});
+  synced.records.set('credential_id', {value: 'AQID'});
+  const syncedSig = await synced.subject.confirmAndSign({}, new Uint8Array());
+  check('synced assertion permits signing', () => assert.equal(syncedSig, 'signature'));
+  for (const [name, options] of [['invalid backup state assertion', {flags: 21}], ['unverified assertion', {flags: 1}], ['missing assertion data', {missingData: true}]]) {
     const f = fixture(options);
     f.records.set('credential_id', {value: 'AQID'});
     await assert.rejects(f.subject.authenticate(), e => e.code === 'SSD_AUTH_POLICY');
@@ -65,7 +73,7 @@ async function main() {
     check(name + ' cannot unlock or sign', () => assert.equal(f.calls.signed, 0));
   }
   const signed = await local.subject.confirmAndSign({}, new Uint8Array());
-  check('verified device-bound assertion permits signing', () => assert.equal(signed, 'signature'));
+  check('verified local assertion permits signing', () => assert.equal(signed, 'signature'));
   check('assertion selects stored credential and requires verification', () => {
     assert.equal(local.calls.get.publicKey.userVerification, 'required');
     assert.equal(Buffer.from(local.calls.get.publicKey.allowCredentials[0].id).toString('base64'), 'AQID');

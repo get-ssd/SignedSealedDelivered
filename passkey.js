@@ -47,10 +47,11 @@ const passkey = {
     if ((flags & 0x05) !== 0x05) {
       throw this._policyError('Local user verification did not complete. SSD has not accepted this credential.');
     }
-    // residentKey is only a preference. Enforce the returned BE/BS flags too:
-    // a platform authenticator can otherwise supply a cloud-syncable credential.
-    if (flags & 0x18) {
-      throw this._policyError('SSD requires a device-bound credential. A backup-eligible or synced credential was returned and has not been accepted.');
+    // Synced passkeys (BE/BS set) are accepted: Google Password Manager — the
+    // default provider on Android — only issues backup-eligible credentials.
+    // BS without BE is not a state a conforming authenticator can report.
+    if ((flags & 0x18) === 0x10) {
+      throw this._policyError('The authenticator reported an invalid backup state. SSD has not accepted this credential.');
     }
     if (registration && credential.authenticatorAttachment !== 'platform') {
       throw this._policyError('SSD requires this device\'s local authenticator.');

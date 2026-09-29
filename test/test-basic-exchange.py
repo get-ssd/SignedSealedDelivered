@@ -154,11 +154,12 @@ async def main():
             check('normal explicit PIN setup creates rung 3 without a credential', await normal.evaluate("async()=>(await db.get('settings','keyring_rung')).value===3 && !(await db.get('settings','credential_id'))"))
             await normal.close()
 
-            # Real WebAuthn responses must not admit cloud-syncable credentials
-            # or misrepresent non-PRF PIN protection in normal onboarding.
+            # Real WebAuthn responses must not misrepresent non-PRF PIN protection
+            # in normal onboarding. Synced (backup-eligible) passkeys are accepted
+            # since ssd-v92: Google Password Manager only issues those.
             for label, has_prf, backup_eligible, expected in [
                 ('local non-PRF', False, False, None),
-                ('syncable PRF', True, True, 'backup-eligible'),
+                ('syncable PRF', True, True, None),
             ]:
                 rejected_context = await browser.new_context(service_workers='block')
                 rejected = await rejected_context.new_page()
@@ -183,6 +184,12 @@ async def main():
                     await pin(rejected)
                     await rejected.wait_for_function("!document.getElementById('wz-btn-2').disabled")
                     check('normal non-PRF setup retains credential and uses rung 2', await rejected.evaluate("async()=>(await db.get('settings','keyring_rung')).value===2 && !!(await db.get('settings','credential_id'))"))
+                    await rejected_context.close()
+                    continue
+                if expected is None:
+                    await rejected.wait_for_function("!document.getElementById('wz-btn-2').disabled")
+                    check(label + ' is accepted and retains the credential', await rejected.evaluate("async()=>!!(await db.get('settings','credential_id'))"))
+                    check(label + ' does not open a PIN fallback', await rejected.locator('#_pin-overlay-input').count() == 0)
                     await rejected_context.close()
                     continue
                 await expect(rejected.locator('#msg .fail')).to_contain_text(expected)
