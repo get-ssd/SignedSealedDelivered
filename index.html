@@ -428,6 +428,12 @@
   <!-- My keys -->
   <h3>My keys</h3>
   <div id="keys-my-list"></div>
+  <div class="import-area" style="margin-top:12px">
+    <label style="margin-top:0">New key</label>
+    <input type="text" id="keys-new-name" placeholder="e.g. X only" maxlength="80" autocomplete="off">
+    <p class="form-hint">For example, a separate key for one platform. Put its signing code in that profile.</p>
+    <button class="btn-primary btn-block" onclick="app.createKey()" style="margin-top:10px">Create key</button>
+  </div>
 
   <!-- Contact keys -->
   <h3>Imported keys</h3>
@@ -507,7 +513,7 @@
 <script src="vendor/qrcode-generator-1.4.4.js"></script>
 <script src="vendor/jsqr-1.4.0.js"></script>
 <script>
-const APP_VERSION = 'ssd-v92';
+const APP_VERSION = 'ssd-v93';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD-basic]', ...a);
@@ -1153,6 +1159,7 @@ const app = {
             </div>
             <div class="key-item-hash">${k.hash8}</div>
             ${k.is_revoked ? '' : `<div class="btn-row" style="margin-top:0">
+              <button class="btn-secondary" onclick="app.copyBeacon('${k.id}')">Copy signing code</button>
               <button class="btn-secondary" onclick="app.showKeyCardQR('${k.id}')">Show QR</button>
               <button class="btn-danger" onclick="app.promptRevokeKey('${k.id}')">Revoke</button>
             </div>`}
@@ -1167,6 +1174,24 @@ const app = {
             <span class="badge">${persons.find(p => p.id === k.person_id)?.encryption_key_pub ? 'Can seal to' : 'Verify only'}</span>
           </div>`).join('')
       : '<p class="muted">No imported keys yet.</p>';
+  },
+
+  async createKey() {
+    const input = document.getElementById('keys-new-name');
+    const name = input.value.trim();
+    if (!name) { this.msg('<span class="warn">Enter a name for the key.</span>'); return; }
+    this.msg('Authenticating…');
+    try {
+      await this._unlock();
+      const rec = await keyring.createKey(name);
+      const card = await keyring.exportKeyCard(rec.id);
+      await db.put('my_keys', { ...rec, signed_card: card });
+      input.value = '';
+      this.msg(`<span class="ok">✓ Key created: ${this._esc(rec.name)} (${rec.hash8}). Copy its signing code into the profile where you will use it.</span>`);
+      await this.loadKeys();
+    } catch(e) {
+      this.msg(`<span class="fail">Key creation failed: ${this._esc(e.message)}</span>`);
+    }
   },
 
   async copyBeacon(keyId) {
