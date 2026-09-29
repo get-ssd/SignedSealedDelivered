@@ -507,7 +507,7 @@
 <script src="vendor/qrcode-generator-1.4.4.js"></script>
 <script src="vendor/jsqr-1.4.0.js"></script>
 <script>
-const APP_VERSION = 'ssd-v86';
+const APP_VERSION = 'ssd-v87';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD-basic]', ...a);
@@ -1675,7 +1675,12 @@ const app = {
       }
       if (signature === null) {
         const totalKeys = (c.hash8 && c.signing_pub_b64 ? 1 : 0) + (c.contacts ?? []).filter(ct => ct.hash8 && ct.public_key_b64).length;
-        if (!confirm(`Unsigned key share — not cryptographically verified.\nImport ${totalKeys} key${totalKeys !== 1 ? 's' : ''}?`)) {
+        // Unsigned shares come only from the owner's own Tick, which names the owner key.
+        const owner = (await db.getAll('my_keys')).find(k => k.hash8 === c.owner_hash8 && !k.is_revoked);
+        if (!owner) {
+          this.msg('<span class="fail">Unsigned key share is not from your own Tick — import your own key into Tick, then export again.</span>'); return;
+        }
+        if (!confirm(`Key share from your Tick (${owner.hash8}) — not cryptographically verified.\nImport ${totalKeys} key${totalKeys !== 1 ? 's' : ''} as unverified?`)) {
           this.msg('<span class="warn">Import cancelled.</span>'); return;
         }
       } else {
@@ -1716,9 +1721,10 @@ const app = {
 
       if (c.hash8 && c.signing_pub_b64)
         await mergeKey(c.hash8, c.signing_pub_b64, c.key_name, c.source ? { source: c.source } : {});
+      const fromTick = signature === null ? { trust_type: 'unverified', received_via: 'tick-share' } : {};
       for (const contact of (c.contacts ?? [])) {
         if (contact.hash8 && contact.public_key_b64)
-          await mergeKey(contact.hash8, contact.public_key_b64, contact.name ?? contact.hash8, contact.source ? { source: contact.source } : {});
+          await mergeKey(contact.hash8, contact.public_key_b64, contact.name ?? contact.hash8, { ...(contact.source ? { source: contact.source } : {}), ...fromTick });
       }
 
       await this.loadKeys();
