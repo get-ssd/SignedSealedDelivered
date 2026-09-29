@@ -3,10 +3,25 @@
 // Requires globals: MOCK_MODE, MOCK_DB (defined inline before this script loads)
 const db = {
   _db: null,
+  get name() { return MOCK_MODE ? MOCK_DB : 'ssd-keyring'; },
+
+  // Reset: delete the whole database. Open windows close on versionchange; if one
+  // still holds it, onBlocked() is told and this waits until the delete is done.
+  async deleteAll(onBlocked) {
+    this._db?.close(); this._db = null; this._closed = true;
+    await new Promise((resolve, reject) => {
+      const req = indexedDB.deleteDatabase(this.name);
+      req.onsuccess = () => resolve();
+      req.onerror   = () => reject(req.error);
+      req.onblocked = () => onBlocked?.();
+    });
+  },
+
   async init() {
+    if (this._closed) throw new Error('Database closed — reload the page.');
     if (this._db) return this._db;
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(MOCK_MODE ? MOCK_DB : 'ssd-keyring', 7);
+      const req = indexedDB.open(this.name, 7);
       req.onupgradeneeded = e => {
         const idb = e.target.result;
         const tx  = e.target.transaction;
@@ -75,7 +90,16 @@ const db = {
           }
         }
       };
-      req.onsuccess = e => { this._db = e.target.result; resolve(this._db); };
+      req.onsuccess = e => {
+        this._db = e.target.result;
+        // Another window is resetting or upgrading the app: let go at once, or
+        // its delete/upgrade waits behind this connection and hangs.
+        this._db.onversionchange = () => {
+          this._db.close(); this._db = null; this._closed = true;
+          document.body.insertAdjacentHTML('beforeend', '<div style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;font-family:sans-serif"><div style="padding:28px;max-width:340px;background:#1a1a1a;color:#ccc;border-radius:8px"><h2 style="margin-bottom:12px;color:#fff">Reload needed</h2><p style="margin-bottom:16px">SSD was reset or updated in another window.</p><button onclick="location.reload()">Reload</button></div></div>');
+        };
+        resolve(this._db);
+      };
       req.onerror = e => reject(e.target.error);
       req.onblocked = () => {
         document.body.innerHTML = '<div style="padding:40px;max-width:400px;margin:60px auto;font-family:sans-serif;color:#ccc;background:#1a1a1a;border-radius:8px"><h2 style="margin-bottom:12px;color:#fff">Refresh needed</h2><p>Close all other tabs of this app, then refresh this page.</p></div>';

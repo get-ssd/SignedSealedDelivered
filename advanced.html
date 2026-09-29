@@ -175,7 +175,7 @@
 
     <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:20px">
       <h3 style="font-size:14px;margin-bottom:12px">Share Public Keys</h3>
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Export a signed, public-only .ssd artifact to share your identity with others or sync to Tick.</p>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Export a signed .ssd of your public key and your contacts’ keys, to send to others or import into Tick.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn-secondary" onclick="app.sharePublicKeys()">Share public keys…</button>
         <button class="btn-secondary" onclick="document.getElementById('adv-share-import-file').click()">Import a key share…</button>
@@ -402,9 +402,9 @@
       </div>
     </div>
     <div class="settings-block">
-      <h3>Factory Reset</h3>
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Wipes all data on this device: keys, contacts, documents, and settings. Use this to start completely fresh. Downloaded <code>.ssd</code> files are not affected.</p>
-      <button class="btn-danger" onclick="app.factoryReset()">Wipe all data…</button>
+      <h3>Reset app</h3>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Deletes SSD’s keys, contacts, documents and settings from this app, to start fresh. Nothing else on the device is touched; downloaded <code>.ssd</code> files are kept.</p>
+      <button class="btn-danger" onclick="app.factoryReset()">Reset app…</button>
     </div>
     <div class="settings-block">
       <h3>About</h3>
@@ -534,7 +534,7 @@
 <script src="vendor/jsqr-1.4.0.js"></script>
 <script>
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v90';
+const APP_VERSION = 'ssd-v91';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD]', ...a);
@@ -1706,8 +1706,8 @@ const app = {
     const allKeys = await db.getAll('my_keys');
     const hasIdentity = allKeys.some(k => k.name.startsWith('O:') && !k.is_revoked);
     const msg = hasIdentity
-      ? 'Wipe ALL data on this device?\n\nYou have a signing identity (O: key) that will be permanently lost unless another of your devices already holds it.\n\nUse “Send identity to a new device” first if not. A saved identity file alone cannot bring it back.\n\nThis cannot be undone. Downloaded .ssd files are not affected.'
-      : 'Wipe ALL data on this device?\n\nThis deletes every key, contact, document, and setting. It cannot be undone.\n\nDownloaded .ssd files are not affected.';
+      ? 'Reset the SSD app on this device?\n\nYou have a signing identity (O: key) that will be permanently lost unless another of your devices already holds it.\n\nUse “Send identity to a new device” first if not. A saved identity file alone cannot bring it back.\n\nThis cannot be undone. Downloaded .ssd files are not affected.'
+      : 'Reset the SSD app on this device?\n\nThis deletes every SSD key, contact, document and setting. It cannot be undone.\n\nDownloaded .ssd files are not affected.';
     if (!confirm(msg)) return;
     try {
       // Clear OPFS artifact blobs
@@ -1715,14 +1715,8 @@ const app = {
         const root = await navigator.storage.getDirectory();
         await root.removeEntry('artifacts', { recursive: true });
       } catch { /* OPFS may be empty */ }
-      // Close DB connection then delete the entire database
-      db._db?.close();
-      await new Promise((resolve, reject) => {
-        const req = indexedDB.deleteDatabase('ssd-keyring');
-        req.onsuccess = resolve;
-        req.onerror   = () => reject(req.error);
-        req.onblocked = resolve; // proceed anyway
-      });
+      // Delete the entire database, waiting for other windows to let go
+      await db.deleteAll(() => ui.display('<span class="warn">Close other SSD windows to finish the reset.</span>'));
       keyring._sessionKey = null;
     } catch(e) {
       alert('Reset failed: ' + e.message);

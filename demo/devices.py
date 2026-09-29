@@ -111,7 +111,7 @@ class Device:
             if page is None:
                 raise SystemExit(f"{self}: no {self.base()} tab appeared in Chrome")
         # Another tab on the app origin holds IndexedDB open and blocks the
-        # factory reset's deleteDatabase; close only same-origin extras.
+        # Reset app's deleteDatabase; close only same-origin extras.
         for pg in list(ctx.pages):
             if pg is not page and pg.url.startswith(self.base()):
                 pg.close()
