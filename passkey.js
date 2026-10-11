@@ -76,9 +76,7 @@ const passkey = {
         authenticatorSelection: {
           authenticatorAttachment: 'platform',
           userVerification: 'required',
-          // SSD retains the credential ID and supplies allowCredentials. It
-          // does not need discoverable/account-synced passkey storage.
-          residentKey: 'discouraged',
+          residentKey: 'required',
         },
         extensions: { prf: {} },
       },

@@ -37,6 +37,16 @@ credentials, so rejecting BE/BS made signing impossible for them. User
 verification, platform attachment on registration, and rejection of the invalid
 BS-without-BE state are still enforced. The rejection described below is history.
 
+**Corrected 2026-10-11 (ssd-v94):** `residentKey` reverted from `'discouraged'`
+to `'required'`. On Firefox for Android, `'discouraged'` caused Firefox to use
+its own internal FIDO2 authenticator, which does not support the PRF extension.
+With `'required'`, Firefox routes through Android Credential Manager → Google
+Password Manager, which provides PRF. Confirmed by on-device diagnostic:
+`'discouraged'` returned BE=false, PRF=false (Firefox internal); `'required'`
+returned BE=true, PRF=true (Google Password Manager). Firefox Nightly is the
+only Android browser that runs the Tick extension, so PRF support there is
+essential for rung-1 (PIN-free) operation.
+
 Human clarification on 2026-09-27: PIN protection is a normal supported fallback,
 not a demo-only exception. It is accepted for these tablets. No Google account
 or credential sync is acceptable. The two governing rules are: you sign what you
@@ -59,8 +69,8 @@ Keep this prerequisite explicit when describing the risk.
 
 This does not make Android's WebAuthn implementation independent of Google Play
 Services. Nor can WebAuthn prevent every provider from displaying an account
-prompt: `residentKey: 'discouraged'` is a preference, backed by returned-property
-validation, not a provider-selection or network-isolation API.
+prompt: `residentKey: 'required'` routes through Android Credential Manager on
+Firefox, which is necessary for PRF, but is not a network-isolation API.
 
 ### Actual local-authenticator results (2026-09-26/27)
 
