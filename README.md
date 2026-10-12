@@ -10,7 +10,21 @@ Part of the SSD ecosystem:
 
 ## Current State
 
-**v45** — full identity model in place: device keys, owner keys, contact pairing, and secure cross-device key transfer via sealed documents.
+**v95** — identity transfer to a fresh device, local public-key sync with Tick, and passkey or explicit PIN protection. Earlier flows below describe the advanced shell where noted.
+
+### Sync public keys with Tick (v95)
+
+In **Keys**, click **Sync public keys with Tick**. Tick asks you to confirm the SSD identity, then missing public signing keys are added to both stores. No file, clipboard, network transfer, or private-key unlock is needed. Install Tick **0.4.27 or newer** in the same browser and reload SSD after updating the extension. Both the basic and advanced shells use `tick-sync.js`.
+
+Existing names and trust/provenance choices remain local; differences are counted in the result. Newly copied keys keep their source and trust status. Revocation and quarantine flags propagate in both directions and are never cleared by sync. Tick treats quarantined keys as unusable. A different Tick owner stops the operation; choose the intended SSD identity, or deliberately change **My key** in Tick before retrying.
+
+Sync is additive: deletions are not propagated, and this is not automatic or cross-device sync. SSD's existing identity export includes its contact keys; click this button before exporting to include keys previously held only by Tick, and on the receiving device to populate its Tick. The identity-file delivery method is unchanged.
+
+An interrupted operation may have committed SSD additions before Tick replied. Retry safely: each key is matched by its full normalized public key, with hash8 used as the storage index. Conflicting key bytes/fingerprints reject the collection. Private fields are excluded by explicit allowlists on both sides. SSD merges contacts in one IndexedDB transaction; Tick saves its checked collection in one storage write. No records are deleted or silently replaced.
+
+Maintenance: `tick-sync.js` and Tick's `core/public-key-bridge.js` implement the `SSD_TICK_KEYS_V1` protocol documented in Tick's README. When adding/changing a wire field, update both allowlists and the end-to-end regression test. New scripts must also be included in the PWA shell cache; keep `APP_VERSION` in both HTML shells and `CACHE_NAME` in `service-worker.js` aligned.
+
+Verification: from `../ssd.tick-2`, build Chrome then run `node test/test-public-key-sync.js`. Build Firefox and add `--firefox` for its bridge smoke check. Tests use disposable profiles, real extensions and real IndexedDB; profiles stay under the project's `.scratch/`. Android installation and confirmation remain a manual browser check.
 
 ## How It Works
 

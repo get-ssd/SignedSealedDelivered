@@ -161,6 +161,11 @@
       <button class="btn-secondary" style="font-size:12px;padding:6px 12px" onclick="ui.showSection('settings')">Passkey &amp; Devices</button>
     </div>
     <div id="keyring-list"></div>
+    <div style="margin-top:16px">
+      <button id="keys-tick-sync" class="btn-secondary" onclick="app.syncTickKeys()">Sync public keys with Tick</button>
+      <p style="font-size:13px;color:var(--text-muted)">Merge public keys with Tick in this browser. Existing names and trust choices are kept. Private keys stay in SSD.</p>
+      <p id="keys-tick-sync-result" role="status" aria-live="polite"></p>
+    </div>
     <div id="validate-result" class="validate-result" style="display:none"></div>
 
     <div style="margin-top:24px;border-top:1px solid var(--border);padding-top:20px">
@@ -534,7 +539,7 @@
 <script src="vendor/jsqr-1.4.0.js"></script>
 <script>
 // Must match CACHE_NAME in service-worker.js
-const APP_VERSION = 'ssd-v94';
+const APP_VERSION = 'ssd-v95';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD]', ...a);
@@ -546,6 +551,7 @@ const log = (...a) => console.log('[SSD]', ...a);
 <script src="keyring.js"></script>
 <script src="signer-engines.js"></script>
 <script src="basic-exchange.js"></script>
+<script src="tick-sync.js"></script>
 <script src="social-identity.js"></script>
 <script src="opfs-identicon.js"></script>
 <script>
@@ -2915,6 +2921,21 @@ const app = {
 
   // SPEC-IDENTITY-TRANSFER: send this identity to a freshly set-up device whose
   // key card has been scanned as a contact. Sealed to that device and to self.
+  async syncTickKeys() {
+    const button = document.getElementById('keys-tick-sync');
+    const status = document.getElementById('keys-tick-sync-result');
+    button.disabled = true;
+    status.textContent = 'Connecting to Tick…';
+    try {
+      const result = await tickSync.run();
+      await this.loadKeyring();
+      status.textContent = `Synced: ${result.ssd.added} added to SSD, ${result.tick.added} added to Tick. ` +
+        `${result.ssd.updated + result.tick.updated} revocation/quarantine updates. ` +
+        `${result.ssd.kept + result.tick.kept} existing names or trust choices kept.`;
+    } catch (error) { status.textContent = error.message; }
+    finally { button.disabled = false; }
+  },
+
   async backupIdentity() {
     ui.clear(); ui.display('Preparing identity file…');
     let step = 'load-keys';

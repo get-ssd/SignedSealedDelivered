@@ -439,6 +439,12 @@
   <h3>Imported keys</h3>
   <div id="keys-contact-list"></div>
 
+  <div style="margin-top:20px">
+    <button id="keys-tick-sync" class="btn-secondary btn-block" onclick="app.syncTickKeys()">Sync public keys with Tick</button>
+    <p class="muted">Merge public keys with Tick in this browser. Existing names and trust choices are kept. Private keys stay in SSD.</p>
+    <p id="keys-tick-sync-result" role="status" aria-live="polite"></p>
+  </div>
+
   <!-- Backup / Restore / Share -->
   <div style="margin-top:32px;border-top:1px solid var(--border);padding-top:20px">
     <h3>Move identity to a new device</h3>
@@ -513,7 +519,7 @@
 <script src="vendor/qrcode-generator-1.4.4.js"></script>
 <script src="vendor/jsqr-1.4.0.js"></script>
 <script>
-const APP_VERSION = 'ssd-v94';
+const APP_VERSION = 'ssd-v95';
 const MOCK_MODE = new URLSearchParams(location.search).has('mock');
 const MOCK_DB   = MOCK_MODE ? `ssd-keyring-mock-${crypto.randomUUID().slice(0,8)}` : null;
 const log = (...a) => console.log('[SSD-basic]', ...a);
@@ -524,6 +530,7 @@ const log = (...a) => console.log('[SSD-basic]', ...a);
 <script src="keyring.js"></script>
 <script src="signer-engines.js"></script>
 <script src="basic-exchange.js"></script>
+<script src="tick-sync.js"></script>
 <script src="social-identity.js"></script>
 <script src="opfs-identicon.js"></script>
 <script src="pwa-updates.js"></script>
@@ -1174,6 +1181,21 @@ const app = {
             <span class="badge">${persons.find(p => p.id === k.person_id)?.encryption_key_pub ? 'Can seal to' : 'Verify only'}</span>
           </div>`).join('')
       : '<p class="muted">No imported keys yet.</p>';
+  },
+
+  async syncTickKeys() {
+    const button = document.getElementById('keys-tick-sync');
+    const status = document.getElementById('keys-tick-sync-result');
+    button.disabled = true;
+    status.textContent = 'Connecting to Tick…';
+    try {
+      const result = await tickSync.run();
+      await this.loadKeys();
+      status.textContent = `Synced: ${result.ssd.added} added to SSD, ${result.tick.added} added to Tick. ` +
+        `${result.ssd.updated + result.tick.updated} revocation/quarantine updates. ` +
+        `${result.ssd.kept + result.tick.kept} existing names or trust choices kept.`;
+    } catch (error) { status.textContent = error.message; }
+    finally { button.disabled = false; }
   },
 
   async createKey() {
